@@ -25,6 +25,7 @@ function Apple({score=70}) {
 }
 
 function Orange({score=70}) { return <mesh><sphereGeometry args={[1.25,64,64]}/><meshStandardMaterial color={score > 45 ? '#ff9738':'#a65b2c'} roughness={.72}/></mesh>; }
+function Mango({score=70}) { return <group rotation={[0,0,-.25]}><mesh scale={[1.05,1.42,.9]}><sphereGeometry args={[1.05,64,64]}/><meshStandardMaterial color={score>65?'#efb83f':'#b96932'} roughness={.58}/></mesh><mesh position={[0,1.55,0]}><cylinderGeometry args={[.07,.10,.32,12]}/><meshStandardMaterial color="#4b341f"/></mesh></group>; }
 
 function Scene({fruit, score}) {
   const key=(fruit||'banana').toLowerCase();
@@ -32,7 +33,7 @@ function Scene({fruit, score}) {
     <ambientLight intensity={.55}/><directionalLight position={[4,6,3]} intensity={2.1} castShadow/>
     <pointLight position={[-4,-1,4]} intensity={10} color="#4dff9a"/>
     <Float speed={1.5} rotationIntensity={.15} floatIntensity={.25}>
-      {key.includes('apple') ? <Apple score={score}/> : key.includes('orange') ? <Orange score={score}/> : <Banana score={score}/>} 
+      {key.includes('apple') ? <Apple score={score}/> : key.includes('orange') ? <Orange score={score}/> : key.includes('mango') ? <Mango score={score}/> : <Banana score={score}/>} 
     </Float>
     <OrbitControls enablePan={false} minDistance={3.5} maxDistance={7} autoRotate autoRotateSpeed={.6}/>
     <Environment preset="studio"/>
