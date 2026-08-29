@@ -8,7 +8,7 @@ from .database import Base, engine
 from .realtime import manager
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="FreshFusion API", version="2.0.0", description="Multimodal fruit intelligence backend for ESP32 telemetry, phone image capture, computer vision and fusion scoring.")
+app = FastAPI(title="FreshFusion API", version="2.1.0", description="Multimodal fruit intelligence backend for ESP32 telemetry, continuous phone vision, computer vision and fusion scoring.")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=CORS_ORIGINS != ["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.include_router(samples.router, prefix="/api/v1")
@@ -25,7 +25,13 @@ def health():
         probe.close()
     except Exception:
         lan_ip = "127.0.0.1"
-    return {"status": "online", "service": "FreshFusion", "version": "2.0.0", "lan_ip": lan_ip, "phone_dashboard": f"http://{lan_ip}:5173"}
+    return {
+        "status": "online",
+        "service": "FreshFusion",
+        "version": "2.1.0",
+        "lan_ip": lan_ip,
+        "phone_dashboard": f"https://{lan_ip}:5173",
+    }
 
 @app.websocket("/ws/live/{sample_id}")
 async def live(websocket: WebSocket, sample_id: str):
