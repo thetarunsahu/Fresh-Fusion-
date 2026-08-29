@@ -12,7 +12,7 @@ router = APIRouter(prefix="/images", tags=["images"])
 ALLOWED = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 @router.post("/upload")
-async def upload_image(request: Request, sample_id: str = Form(...), angle: str = Form("unknown"), file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_image(request: Request, sample_id: str = Form(...), angle: str = Form("unknown"), ground_truth: str | None = Form(None), file: UploadFile = File(...), db: Session = Depends(get_db)):
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
     if not sample: raise HTTPException(404, "Sample not found")
     if file.content_type not in ALLOWED: raise HTTPException(415, "Only JPEG, PNG and WEBP images are supported")
@@ -27,7 +27,7 @@ async def upload_image(request: Request, sample_id: str = Form(...), angle: str 
     except Exception as exc:
         path.unlink(missing_ok=True); raise HTTPException(400, f"Image analysis failed: {exc}")
     url = str(request.base_url).rstrip("/") + f"/uploads/{filename}"
-    record = FruitImage(sample_id=sample_id, angle=angle, filename=filename, original_name=file.filename, url=url, width=width, height=height, analysis=analysis)
+    record = FruitImage(sample_id=sample_id, angle=angle, filename=filename, original_name=file.filename, ground_truth=ground_truth or None, url=url, width=width, height=height, analysis=analysis)
     db.add(record); db.commit(); db.refresh(record)
-    payload={"id":record.id,"sample_id":sample_id,"angle":angle,"url":url,"analysis":analysis,"uploaded_at":record.uploaded_at.isoformat()}
+    payload={"id":record.id,"sample_id":sample_id,"angle":angle,"ground_truth":record.ground_truth,"url":url,"analysis":analysis,"uploaded_at":record.uploaded_at.isoformat()}
     await manager.broadcast(sample_id,{"type":"image","data":payload}); return payload

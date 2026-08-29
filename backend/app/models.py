@@ -40,6 +40,7 @@ class FruitImage(Base):
     angle = Column(String(30), default="unknown")
     filename = Column(String(255), nullable=False)
     original_name = Column(String(255), nullable=True)
+    ground_truth = Column(String(30), nullable=True, index=True)
     url = Column(String(500), nullable=False)
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)

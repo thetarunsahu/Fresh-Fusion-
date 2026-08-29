@@ -13,6 +13,6 @@ export const listSamples = () => json(`${API}/samples?limit=20`);
 export const bundle = (id) => json(`${API}/samples/${id}/bundle`);
 export const fuse = (id) => json(`${API}/samples/${id}/fusion`, {method:"POST"});
 export const pushReading = (payload) => json(`${API}/sensors/readings`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
-export const uploadImage = (sampleId, angle, file) => { const fd = new FormData(); fd.append("sample_id", sampleId); fd.append("angle", angle); fd.append("file", file); return json(`${API}/images/upload`, {method:"POST", body:fd}); };
+export const uploadImage = (sampleId, angle, truth, file) => { const fd = new FormData(); fd.append("sample_id", sampleId); fd.append("angle", angle); if(truth) fd.append("ground_truth", truth); fd.append("file", file); return json(`${API}/images/upload`, {method:"POST", body:fd}); };
 export const context = (fruit, lat, lon) => json(`${API}/external/context?fruit_type=${encodeURIComponent(fruit)}${lat != null ? `&lat=${lat}&lon=${lon}` : ""}`);
 export const wsUrl = (id) => `${window.location.protocol === "https:" ? "wss" : "ws"}://${host}:8000/ws/live/${id}`;

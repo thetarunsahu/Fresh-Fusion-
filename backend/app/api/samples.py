@@ -32,7 +32,7 @@ def bundle(sample_id: str, db: Session = Depends(get_db)):
     return {
         "sample": {"sample_id": sample.sample_id, "fruit_type": sample.fruit_type, "variety": sample.variety, "status": sample.status, "created_at": sample.created_at},
         "sensors": [{"id": s.id, "device_id": s.device_id, "temperature": s.temperature, "humidity": s.humidity, "mq135_raw": s.mq135_raw, "gas_ppm": s.gas_ppm, "voc_index": s.voc_index, "rssi": s.rssi, "captured_at": s.captured_at} for s in sensors],
-        "images": [{"id": i.id, "angle": i.angle, "url": i.url, "analysis": i.analysis, "uploaded_at": i.uploaded_at} for i in images],
+        "images": [{"id": i.id, "angle": i.angle, "ground_truth": i.ground_truth, "url": i.url, "analysis": i.analysis, "uploaded_at": i.uploaded_at} for i in images],
         "fusion": None if not result else {"freshness_score": result.freshness_score, "sensor_score": result.sensor_score, "vision_score": result.vision_score, "label": result.label, "confidence": result.confidence, "risk": result.risk, "components": result.components, "created_at": result.created_at},
     }
 
