@@ -18,7 +18,7 @@ class SampleOut(BaseModel):
 
 class SensorIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    sample_id: str
+    sample_id: str | None = None
     device_id: str = "ESP32_01"
     temperature: float | None = None
     humidity: float | None = None
