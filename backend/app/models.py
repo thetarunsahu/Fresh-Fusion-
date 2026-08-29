@@ -1,41 +1,63 @@
-from datetime import datetime, timezone
-
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from datetime import datetime
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy.orm import relationship
 from .database import Base
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
 
 class FruitSample(Base):
     __tablename__ = "fruit_samples"
-
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    sample_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
-    fruit_type: Mapped[str] = mapped_column(String(80), index=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="collecting")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-
-    readings: Mapped[list["SensorReading"]] = relationship(
-        back_populates="sample", cascade="all, delete-orphan"
-    )
-
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), unique=True, index=True, nullable=False)
+    fruit_type = Column(String(60), index=True, nullable=False)
+    variety = Column(String(80), nullable=True)
+    source = Column(String(120), nullable=True)
+    status = Column(String(32), default="collecting")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    sensors = relationship("SensorReading", back_populates="sample", cascade="all, delete-orphan")
+    images = relationship("FruitImage", back_populates="sample", cascade="all, delete-orphan")
+    results = relationship("FusionResult", back_populates="sample", cascade="all, delete-orphan")
 
 class SensorReading(Base):
     __tablename__ = "sensor_readings"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
+    device_id = Column(String(80), index=True, default="ESP32_01")
+    temperature = Column(Float, nullable=True)
+    humidity = Column(Float, nullable=True)
+    mq135_raw = Column(Float, nullable=True)
+    gas_ppm = Column(Float, nullable=True)
+    voc_index = Column(Float, nullable=True)
+    rssi = Column(Float, nullable=True)
+    uptime_ms = Column(Float, nullable=True)
+    extra_metrics = Column(JSON, default=dict)
+    captured_at = Column(DateTime, default=datetime.utcnow, index=True)
+    sample = relationship("FruitSample", back_populates="sensors")
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    sample_id: Mapped[int] = mapped_column(ForeignKey("fruit_samples.id"), index=True)
-    device_id: Mapped[str] = mapped_column(String(80), default="ESP32_01")
-    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
-    humidity: Mapped[float | None] = mapped_column(Float, nullable=True)
-    gas_raw: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    gas_ppm: Mapped[float | None] = mapped_column(Float, nullable=True)
-    voc_index: Mapped[float | None] = mapped_column(Float, nullable=True)
-    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+class FruitImage(Base):
+    __tablename__ = "fruit_images"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
+    angle = Column(String(30), default="unknown")
+    filename = Column(String(255), nullable=False)
+    original_name = Column(String(255), nullable=True)
+    url = Column(String(500), nullable=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    analysis = Column(JSON, default=dict)
+    uploaded_at = Column(DateTime, default=datetime.utcnow, index=True)
+    sample = relationship("FruitSample", back_populates="images")
 
-    sample: Mapped[FruitSample] = relationship(back_populates="readings")
+class FusionResult(Base):
+    __tablename__ = "fusion_results"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
+    freshness_score = Column(Float, nullable=False)
+    sensor_score = Column(Float, nullable=True)
+    vision_score = Column(Float, nullable=True)
+    label = Column(String(30), nullable=False)
+    confidence = Column(Float, nullable=False)
+    risk = Column(String(30), nullable=False)
+    explanation = Column(Text, nullable=True)
+    components = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    sample = relationship("FruitSample", back_populates="results")

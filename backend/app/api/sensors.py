@@ -1,50 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
 from ..database import get_db
 from ..models import FruitSample, SensorReading
-from ..schemas import SensorReadingCreate, SensorReadingOut
+from ..schemas import SensorIn
+from ..realtime import manager
 
-router = APIRouter(prefix="/api/sensors", tags=["sensors"])
+router = APIRouter(prefix="/sensors", tags=["sensors"])
 
+@router.post("/readings")
+async def ingest(payload: SensorIn, db: Session = Depends(get_db)):
+    sample = db.query(FruitSample).filter(FruitSample.sample_id == payload.sample_id).first()
+    if not sample: raise HTTPException(404, "Sample not found")
+    values = payload.model_dump()
+    known = {"sample_id", "device_id", "temperature", "humidity", "mq135_raw", "gas_ppm", "voc_index", "rssi", "uptime_ms", "extra_metrics"}
+    extra = {k: v for k, v in values.items() if k not in known}
+    clean = {k: v for k, v in values.items() if k in known}
+    clean["extra_metrics"] = {**(clean.get("extra_metrics") or {}), **extra}
+    reading = SensorReading(**clean)
+    db.add(reading); db.commit(); db.refresh(reading)
+    message = {"type": "sensor", "data": {"id": reading.id, "sample_id": reading.sample_id, "device_id": reading.device_id, "temperature": reading.temperature, "humidity": reading.humidity, "mq135_raw": reading.mq135_raw, "gas_ppm": reading.gas_ppm, "voc_index": reading.voc_index, "rssi": reading.rssi, "captured_at": reading.captured_at.isoformat()}}
+    await manager.broadcast(payload.sample_id, message)
+    return {"ok": True, **message["data"]}
 
-@router.post("/readings", response_model=SensorReadingOut, status_code=201)
-def create_reading(payload: SensorReadingCreate, db: Session = Depends(get_db)) -> SensorReading:
-    sample = db.scalar(select(FruitSample).where(FruitSample.sample_code == payload.sample_code))
-    if not sample:
-        raise HTTPException(status_code=404, detail="Sample not found")
-
-    reading = SensorReading(
-        sample_id=sample.id,
-        device_id=payload.device_id,
-        temperature=payload.temperature,
-        humidity=payload.humidity,
-        gas_raw=payload.gas_raw,
-        gas_ppm=payload.gas_ppm,
-        voc_index=payload.voc_index,
-    )
-    db.add(reading)
-    db.commit()
-    db.refresh(reading)
-    return reading
-
-
-@router.get("/readings", response_model=list[SensorReadingOut])
-def list_readings(
-    sample_code: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-    db: Session = Depends(get_db),
-) -> list[SensorReading]:
-    stmt = select(SensorReading).order_by(SensorReading.captured_at.desc()).limit(limit)
-    if sample_code:
-        sample = db.scalar(select(FruitSample).where(FruitSample.sample_code == sample_code))
-        if not sample:
-            raise HTTPException(status_code=404, detail="Sample not found")
-        stmt = stmt.where(SensorReading.sample_id == sample.id)
-    return list(db.scalars(stmt).all())
-
-
-@router.get("/latest", response_model=SensorReadingOut | None)
-def latest_reading(db: Session = Depends(get_db)) -> SensorReading | None:
-    return db.scalar(select(SensorReading).order_by(SensorReading.captured_at.desc()).limit(1))
+@router.get("/{sample_id}/latest")
+def latest(sample_id: str, db: Session = Depends(get_db)):
+    row = db.query(SensorReading).filter(SensorReading.sample_id == sample_id).order_by(SensorReading.captured_at.desc()).first()
+    if not row: return None
+    return {"id": row.id, "device_id": row.device_id, "temperature": row.temperature, "humidity": row.humidity, "mq135_raw": row.mq135_raw, "gas_ppm": row.gas_ppm, "voc_index": row.voc_index, "rssi": row.rssi, "captured_at": row.captured_at}

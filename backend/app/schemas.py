@@ -1,50 +1,47 @@
 from datetime import datetime
-
+from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class SampleCreate(BaseModel):
-    fruit_type: str = Field(min_length=2, max_length=80)
-    notes: str | None = Field(default=None, max_length=500)
-
+    fruit_type: str = "Banana"
+    variety: str | None = None
+    source: str | None = None
 
 class SampleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    sample_code: str
+    sample_id: str
     fruit_type: str
-    notes: str | None
+    variety: str | None = None
+    source: str | None = None
     status: str
     created_at: datetime
 
-
-class SensorReadingCreate(BaseModel):
-    sample_code: str
+class SensorIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    sample_id: str
     device_id: str = "ESP32_01"
     temperature: float | None = None
     humidity: float | None = None
-    gas_raw: int | None = None
+    mq135_raw: float | None = None
     gas_ppm: float | None = None
     voc_index: float | None = None
+    rssi: float | None = None
+    uptime_ms: float | None = None
+    extra_metrics: dict[str, Any] = Field(default_factory=dict)
 
-
-class SensorReadingOut(BaseModel):
+class SensorOut(SensorIn):
     model_config = ConfigDict(from_attributes=True)
-
     id: int
-    sample_id: int
-    device_id: str
-    temperature: float | None
-    humidity: float | None
-    gas_raw: int | None
-    gas_ppm: float | None
-    voc_index: float | None
     captured_at: datetime
 
-
-class OverviewOut(BaseModel):
-    total_samples: int
-    total_readings: int
-    latest_sample: SampleOut | None
-    latest_reading: SensorReadingOut | None
+class FusionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    freshness_score: float
+    sensor_score: float | None
+    vision_score: float | None
+    label: str
+    confidence: float
+    risk: str
+    explanation: str | None
+    components: dict[str, Any]
+    created_at: datetime

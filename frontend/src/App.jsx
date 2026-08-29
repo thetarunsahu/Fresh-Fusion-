@@ -1,176 +1,68 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Apple, Cpu, Database, Droplets, FlaskConical, Gauge, Plus, Radio, Thermometer, Wifi } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { api } from "./api";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, Camera, Cloud, Database, FlaskConical, Gauge, ImagePlus, Leaf, Radio, RefreshCw, Smartphone, Thermometer, Wifi } from 'lucide-react';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { QRCodeSVG } from 'qrcode.react';
+import FruitTwin from './components/FruitTwin';
+import { API_ROOT, bundle, context, createSample, fuse, health, pushReading, uploadImage, wsUrl } from './api';
 
-const emptyOverview = { total_samples: 0, total_readings: 0, latest_sample: null, latest_reading: null };
+const angles=['front','back','left','right','top'];
+const fmt=(v,d=1)=> v==null ? '--' : Number(v).toFixed(d);
 
-function MetricCard({ icon: Icon, label, value, unit, hint }) {
-  return (
-    <article className="metric-card glass">
-      <div className="metric-icon"><Icon size={20} /></div>
-      <div>
-        <span className="eyebrow">{label}</span>
-        <div className="metric-value">{value ?? "--"}<small>{unit}</small></div>
-        <p>{hint}</p>
-      </div>
-    </article>
-  );
-}
+function Metric({icon:Icon,label,value,unit,sub}){return <div className="metric glass"><div className="metricIcon"><Icon size={18}/></div><div><span>{label}</span><strong>{value}<small>{unit}</small></strong><p>{sub}</p></div></div>}
+function Ring({value=0,label}){return <div className="ring" style={{'--p':`${Math.max(0,Math.min(100,value))}%`}}><div><strong>{Math.round(value)}</strong><span>/100</span><small>{label}</small></div></div>}
 
-function App() {
-  const [online, setOnline] = useState(false);
-  const [overview, setOverview] = useState(emptyOverview);
-  const [readings, setReadings] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("Connect the backend, then create a sample.");
+export default function App(){
+  const [online,setOnline]=useState(false), [healthInfo,setHealthInfo]=useState(null), [sample,setSample]=useState(null), [data,setData]=useState({sensors:[],images:[],fusion:null}), [external,setExternal]=useState(null), [angle,setAngle]=useState('front'), [busy,setBusy]=useState(''), [err,setErr]=useState('');
+  const fileRef=useRef(); const booted=useRef(false);
+  const latest=data.sensors.at(-1)||{}; const fusion=data.fusion||{}; const score=fusion.freshness_score ?? 68;
+  const chart=useMemo(()=>data.sensors.slice(-60).map((r,i)=>({i,temperature:r.temperature,humidity:r.humidity,gas:r.gas_ppm ?? r.mq135_raw})),[data.sensors]);
 
-  const refresh = useCallback(async () => {
-    try {
-      await api.health();
-      setOnline(true);
-      const nextOverview = await api.overview();
-      setOverview(nextOverview);
-      const code = nextOverview.latest_sample?.sample_code;
-      setReadings(code ? await api.readings(code) : []);
-      setMessage(code ? `Tracking ${code}` : "Backend online. Create the first fruit sample.");
-    } catch (error) {
-      setOnline(false);
-      setMessage(error.message);
-    }
-  }, []);
+  const refresh=async(id=sample?.sample_id)=>{if(!id)return; const b=await bundle(id); setData(b);};
+  const newSample=async()=>{setBusy('sample');try{const s=await createSample('Banana');setSample(s);await refresh(s.sample_id);}finally{setBusy('')}};
+  const simulate=async()=>{if(!sample)return; const t=26+Math.random()*2,h=58+Math.random()*12,raw=650+Math.random()*400; await pushReading({sample_id:sample.sample_id,device_id:'SIMULATOR',temperature:t,humidity:h,mq135_raw:raw,gas_ppm:raw*.55,voc_index:Math.max(0,(raw-500)/10),rssi:-48}); await refresh();};
+  const doFuse=async()=>{if(!sample)return;setBusy('fusion');try{await fuse(sample.sample_id);await refresh();}finally{setBusy('')}};
+  const onFile=async(e)=>{const f=e.target.files?.[0]; if(!f||!sample)return;setBusy('image');setErr('');try{await uploadImage(sample.sample_id,angle,f);await doFuse();}catch(x){setErr(x.message)}finally{setBusy('');e.target.value=''}};
+  const loadExternal=()=>navigator.geolocation?.getCurrentPosition(async p=>setExternal(await context(sample?.fruit_type||'Banana',p.coords.latitude,p.coords.longitude)),async()=>setExternal(await context(sample?.fruit_type||'Banana')),{timeout:5000});
 
-  useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, 3000);
-    return () => clearInterval(timer);
-  }, [refresh]);
+  useEffect(()=>{if(booted.current)return;booted.current=true;health().then(h=>{setOnline(true);setHealthInfo(h)}).catch(()=>setOnline(false)); newSample();},[]);
+  useEffect(()=>{if(!sample)return; const ws=new WebSocket(wsUrl(sample.sample_id)); ws.onmessage=()=>refresh(sample.sample_id); return()=>ws.close();},[sample?.sample_id]);
+  useEffect(()=>{if(sample)loadExternal();},[sample?.sample_id]);
 
-  const chartData = useMemo(
-    () => [...readings].reverse().map((item, index) => ({
-      index: index + 1,
-      temp: item.temperature,
-      humidity: item.humidity,
-      gas: item.gas_ppm ?? item.gas_raw,
-    })),
-    [readings],
-  );
+  const analysis=data.images?.[0]?.analysis||{}; const color=analysis.color||{}, texture=analysis.texture||{}, defects=analysis.defects||{};
+  return <div className="appShell">
+    <aside className="sidebar">
+      <div className="brand"><div className="brandMark"><Leaf/></div><div><b>FreshFusion</b><span>Fruit Intelligence OS</span></div></div>
+      <nav>{[[Gauge,'Overview'],[Camera,'Live Scan'],[Leaf,'3D Twin'],[FlaskConical,'Vision Lab'],[Radio,'Sensor Lab'],[Activity,'Fusion Engine'],[Database,'History'],[Cloud,'External Data']].map(([I,t],i)=><button className={i===0?'active':''} key={t}><I size={17}/>{t}</button>)}</nav>
+      <div className="sideStatus"><span className={online?'dot on':'dot'}></span><div><b>{online?'Backend online':'Backend offline'}</b><small>{API_ROOT}</small></div></div>
+    </aside>
 
-  const createSample = async () => {
-    setBusy(true);
-    try {
-      const sample = await api.createSample("Banana");
-      setMessage(`Created ${sample.sample_code}. Add a test reading next.`);
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
+    <main>
+      <header><div><span className="eyebrow">LIVE MULTIMODAL ANALYSIS</span><h1>Fruit intelligence,<br/><em>not just classification.</em></h1><p>Sensor telemetry, phone imaging, computer vision, 3D digital twin, online context and multimodal freshness scoring in one system.</p></div><div className="headerActions"><button className="ghost" onClick={newSample}>+ New sample</button><button className="primary" onClick={doFuse}><RefreshCw size={16}/> Recompute fusion</button></div></header>
 
-  const pushTestReading = async () => {
-    const code = overview.latest_sample?.sample_code;
-    if (!code) return createSample();
-    setBusy(true);
-    try {
-      const t = Date.now() / 10000;
-      await api.pushReading(code, {
-        device_id: "SIMULATOR_01",
-        temperature: +(26.5 + Math.sin(t) * 1.2).toFixed(2),
-        humidity: +(61 + Math.cos(t * 0.8) * 4).toFixed(2),
-        gas_raw: Math.round(1450 + Math.sin(t * 1.4) * 220),
-        gas_ppm: +(410 + Math.sin(t * 1.1) * 75).toFixed(2),
-        voc_index: +(52 + Math.cos(t) * 11).toFixed(2),
-      });
-      setMessage("Test sensor packet stored successfully.");
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const latest = overview.latest_reading;
-  const sample = overview.latest_sample;
-
-  return (
-    <main className="app-shell">
-      <div className="aurora aurora-one" />
-      <div className="aurora aurora-two" />
-
-      <header className="topbar glass">
-        <div className="brand">
-          <div className="brand-orbit"><Apple size={24} /></div>
-          <div><strong>FreshFusion</strong><span>Fruit Intelligence OS</span></div>
-        </div>
-        <div className={`connection ${online ? "online" : "offline"}`}>
-          <Wifi size={16} /> {online ? "Backend Online" : "Backend Offline"}
-        </div>
-      </header>
-
-      <section className="hero">
-        <div>
-          <span className="kicker"><Radio size={14} /> LIVE MULTIMODAL ANALYSIS</span>
-          <h1>See the fruit.<br /><span>Sense the change.</span></h1>
-          <p>One dashboard for sensor telemetry, computer vision, texture intelligence and the final freshness score.</p>
-          <div className="actions">
-            <button onClick={createSample} disabled={!online || busy}><Plus size={17} /> New sample</button>
-            <button className="secondary" onClick={pushTestReading} disabled={!online || busy}><FlaskConical size={17} /> Push test reading</button>
-          </div>
-          <div className="status-line"><Activity size={15} /> {message}</div>
-        </div>
-
-        <div className="fruit-core glass">
-          <div className="rings"><div className="fruit-sphere">{sample?.fruit_type?.[0] || "F"}</div></div>
-          <span className="eyebrow">CURRENT SAMPLE</span>
-          <strong>{sample?.sample_code || "NO SAMPLE"}</strong>
-          <p>{sample?.fruit_type || "Waiting for fruit"} · {sample?.status || "idle"}</p>
-        </div>
+      {err&&<div className="error">{err}</div>}
+      <section className="heroGrid">
+        <div className="twin glass"><div className="panelTitle"><div><span>DIGITAL TWIN</span><h2>{sample?.fruit_type||'Fruit'} / {sample?.sample_id||'...'}</h2></div><div className="liveChip"><span></span>interactive 3D</div></div><div className="canvasWrap"><FruitTwin fruit={sample?.fruit_type} score={score}/><div className="scanLines"></div></div><div className="twinFoot"><span>Drag to rotate</span><span>Scroll to zoom</span><span>Score-linked surface</span></div></div>
+        <div className="scorePanel glass"><span className="eyebrow">FUSION RESULT</span><Ring value={score} label="Freshness"/><h3 className={`label ${fusion.label||'collecting'}`}>{(fusion.label||'COLLECTING').toUpperCase()}</h3><div className="confidence"><span>Confidence</span><b>{fmt(fusion.confidence,0)}%</b></div><div className="scoreSplit"><div><small>Sensor score</small><b>{fmt(fusion.sensor_score,0)}</b></div><div><small>Vision score</small><b>{fmt(fusion.vision_score,0)}</b></div><div><small>Risk</small><b>{fusion.risk||'--'}</b></div></div><p className="disclaimer">Experimental score for prototype validation; not a food-safety verdict.</p></div>
       </section>
 
-      <section className="metrics-grid">
-        <MetricCard icon={Thermometer} label="Temperature" value={latest?.temperature} unit="°C" hint="Chamber environment" />
-        <MetricCard icon={Droplets} label="Humidity" value={latest?.humidity} unit="%" hint="Relative humidity" />
-        <MetricCard icon={Gauge} label="Gas level" value={latest?.gas_ppm ?? latest?.gas_raw} unit={latest?.gas_ppm ? " ppm" : " raw"} hint="Volatile gas signal" />
-        <MetricCard icon={Cpu} label="VOC index" value={latest?.voc_index} unit="" hint={latest?.device_id || "No device"} />
+      <section className="metrics"><Metric icon={Thermometer} label="Temperature" value={fmt(latest.temperature)} unit="°C" sub="Chamber live"/><Metric icon={Activity} label="Humidity" value={fmt(latest.humidity)} unit="%" sub="Relative humidity"/><Metric icon={Gauge} label="Gas signal" value={fmt(latest.gas_ppm ?? latest.mq135_raw,0)} unit={latest.gas_ppm?' ppm':' raw'} sub="MQ telemetry"/><Metric icon={Wifi} label="ESP32 link" value={fmt(latest.rssi,0)} unit=" dBm" sub={latest.device_id||'Awaiting device'}/></section>
+
+      <section className="workGrid">
+        <div className="telemetry glass"><div className="panelTitle"><div><span>SENSOR TELEMETRY</span><h2>Live degradation environment</h2></div><button className="mini" onClick={simulate}>Push test reading</button></div><div className="chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#62f59c" stopOpacity=".35"/><stop offset="1" stopColor="#62f59c" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="#173326" vertical={false}/><XAxis dataKey="i" hide/><YAxis stroke="#5a7568" fontSize={11}/><Tooltip contentStyle={{background:'#07120d',border:'1px solid #234737'}}/><Area type="monotone" dataKey="temperature" stroke="#62f59c" fill="url(#g1)" strokeWidth={2}/><Area type="monotone" dataKey="humidity" stroke="#8dd7ff" fillOpacity={0}/><Area type="monotone" dataKey="gas" stroke="#ffd76b" fillOpacity={0}/></AreaChart></ResponsiveContainer></div><div className="legend"><span className="green">Temperature</span><span className="blue">Humidity</span><span className="yellow">Gas</span><span>{data.sensors.length} readings stored</span></div></div>
+
+        <div className="capture glass"><div className="panelTitle"><div><span>PHONE / CAMERA INPUT</span><h2>Multi-angle fruit scan</h2></div><Smartphone size={20}/></div><div className="angles">{angles.map(a=><button onClick={()=>setAngle(a)} className={angle===a?'sel':''} key={a}>{a}</button>)}</div><button className="captureButton" onClick={()=>fileRef.current?.click()} disabled={!sample||busy==='image'}><ImagePlus size={28}/><b>{busy==='image'?'Analysing image...':'Capture / upload image'}</b><span>Opens phone camera on supported devices</span></button><input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={onFile}/><div className="thumbs">{data.images.slice(0,5).map(img=><div key={img.id}><img src={img.url}/><span>{img.angle}</span></div>)}{!data.images.length&&<p>No fruit images yet. Capture front, back, left, right and top.</p>}</div></div>
       </section>
 
-      <section className="dashboard-grid">
-        <article className="chart-panel glass">
-          <div className="panel-head">
-            <div><span className="eyebrow">SENSOR TELEMETRY</span><h2>Freshness environment</h2></div>
-            <span className="live-pill">● Live</span>
-          </div>
-          {chartData.length ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="tempFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#71f7af" stopOpacity={0.38}/><stop offset="95%" stopColor="#71f7af" stopOpacity={0}/></linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.07)" />
-                <XAxis dataKey="index" stroke="#6f847a" tickLine={false} />
-                <YAxis stroke="#6f847a" tickLine={false} />
-                <Tooltip contentStyle={{ background: "#0b1511", border: "1px solid #244033", borderRadius: 14 }} />
-                <Area type="monotone" dataKey="temp" stroke="#71f7af" fill="url(#tempFill)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : <div className="empty-chart">Push readings to generate live telemetry.</div>}
-        </article>
-
-        <aside className="insight-panel glass">
-          <div className="panel-head"><div><span className="eyebrow">PIPELINE</span><h2>Intelligence layers</h2></div></div>
-          <div className="pipeline-item active"><Radio /><div><b>Sensor layer</b><span>Temperature · humidity · gas</span></div></div>
-          <div className="pipeline-item"><Apple /><div><b>Vision layer</b><span>Color · texture · defects</span></div></div>
-          <div className="pipeline-item"><Cpu /><div><b>AI model</b><span>Fresh · ripe · overripe · spoiled</span></div></div>
-          <div className="pipeline-item"><Activity /><div><b>Fusion engine</b><span>Final freshness score</span></div></div>
-        </aside>
+      <section className="intelligenceGrid">
+        <div className="glass intel"><span className="eyebrow">COLOR INTELLIGENCE</span><h2>Surface chromatics</h2><div className="bars">{[['Yellow',color.yellow_pct],['Green',color.green_pct],['Brown',color.brown_pct],['Dark',color.dark_pct]].map(([n,v])=><div key={n}><div><span>{n}</span><b>{fmt(v)}%</b></div><i><u style={{width:`${Math.min(100,v||0)}%`}}/></i></div>)}</div></div>
+        <div className="glass intel"><span className="eyebrow">TEXTURE INTELLIGENCE</span><h2>Surface structure</h2><div className="statRows"><div><span>Entropy</span><b>{fmt(texture.entropy,2)}</b></div><div><span>Roughness index</span><b>{fmt(texture.roughness_index)}</b></div><div><span>Edge density</span><b>{fmt(texture.edge_density_pct)}%</b></div><div><span>Laplacian variance</span><b>{fmt(texture.laplacian_variance,0)}</b></div></div></div>
+        <div className="glass intel"><span className="eyebrow">DEFECT INTELLIGENCE</span><h2>Visible damage estimate</h2><div className="bigStat">{fmt(defects.healthy_surface_estimate_pct,0)}<small>% healthy</small></div><div className="statRows"><div><span>Brown regions</span><b>{fmt(defects.brown_region_pct)}%</b></div><div><span>Dark regions</span><b>{fmt(defects.dark_region_pct)}%</b></div><div><span>Damage estimate</span><b>{fmt(defects.visible_damage_estimate_pct)}%</b></div></div></div>
       </section>
 
-      <section className="bottom-grid">
-        <article className="glass compact-stat"><Database /><div><span className="eyebrow">DATABASE</span><strong>{overview.total_samples}</strong><p>fruit samples stored</p></div></article>
-        <article className="glass compact-stat"><Activity /><div><span className="eyebrow">TELEMETRY</span><strong>{overview.total_readings}</strong><p>sensor readings stored</p></div></article>
-        <article className="glass roadmap"><span className="eyebrow">NEXT MODULE</span><strong>Computer Vision Lab</strong><p>Image upload, segmentation, RGB/HSV, GLCM texture and defect mapping.</p></article>
+      <section className="bottomGrid">
+        <div className="glass external"><div className="panelTitle"><div><span>ONLINE CONTEXT</span><h2>Outside world vs chamber</h2></div><Cloud size={20}/></div><div className="externalStats"><div><small>Outside temperature</small><b>{fmt(external?.weather?.temperature_c)}°C</b></div><div><small>Outside humidity</small><b>{fmt(external?.weather?.humidity_pct)}%</b></div><div><small>Reference storage</small><b>{external?.baseline?.storage_temp_c||'--'}°C</b></div><div><small>Reference RH</small><b>{external?.baseline?.relative_humidity_pct||'--'}%</b></div></div><p>{external?.weather?.source ? `Live weather source: ${external.weather.source}. `:''}{external?.baseline?.note}</p></div>
+        <div className="glass phone"><div><span className="eyebrow">PHONE PAIRING</span><h2>Open this dashboard on your phone</h2><p>Phone and laptop must be on the same Wi‑Fi. Start Vite with <code>npm run dev -- --host 0.0.0.0</code> and backend with <code>uvicorn app.main:app --host 0.0.0.0 --reload</code>.</p></div><div className="qr"><QRCodeSVG value={healthInfo?.phone_dashboard || window.location.href} size={118} bgColor="#07120d" fgColor="#66f3a3"/><small>{healthInfo?.phone_dashboard || "Scan dashboard URL"}</small></div></div>
       </section>
     </main>
-  );
+  </div>
 }
-
-export default App;

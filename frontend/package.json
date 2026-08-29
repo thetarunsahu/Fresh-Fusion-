@@ -1,20 +1,19 @@
 {
   "name": "freshfusion-dashboard",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
+  "scripts": {"dev": "vite", "build": "vite build", "preview": "vite preview"},
   "dependencies": {
+    "@react-three/drei": "latest",
+    "@react-three/fiber": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
+    "lucide-react": "latest",
+    "qrcode.react": "latest",
     "react": "latest",
     "react-dom": "latest",
     "recharts": "latest",
-    "lucide-react": "latest"
-  },
-  "devDependencies": {}
+    "three": "latest",
+    "vite": "latest"
+  }
 }
