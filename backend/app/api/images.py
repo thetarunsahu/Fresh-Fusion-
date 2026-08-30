@@ -13,7 +13,7 @@ from ..services.image_analysis import analyze_image
 
 router = APIRouter(prefix='/images', tags=['images'])
 ALLOWED = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
-STREAM_KEEP = max(8, int(os.getenv('STREAM_KEEP', '24')))
+STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
 FUSION_KEEP = max(40, int(os.getenv('FUSION_KEEP', '200')))
 
 
@@ -25,14 +25,13 @@ def _relative_artifacts(analysis: dict) -> dict:
 
 def _delete_image_files(record: FruitImage) -> None:
     (UPLOAD_DIR / record.filename).unlink(missing_ok=True)
-    artifacts = (record.analysis or {}).get('artifacts', {})
-    for value in artifacts.values():
+    for value in (record.analysis or {}).get('artifacts', {}).values():
         (UPLOAD_DIR / Path(str(value)).name).unlink(missing_ok=True)
 
 
 def _trim_stream(db: Session, sample_id: str) -> None:
     stale = (db.query(FruitImage)
-        .filter(FruitImage.sample_id == sample_id, FruitImage.angle == 'live')
+        .filter(FruitImage.sample_id == sample_id, FruitImage.angle.like('live-%'))
         .order_by(FruitImage.uploaded_at.desc())
         .offset(STREAM_KEEP).all())
     for row in stale:
@@ -65,7 +64,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     try:
         with Image.open(path) as im:
             width, height = im.size
-        analysis = _relative_artifacts(analyze_image(path))
+        analysis = _relative_artifacts(analyze_image(path, sample.fruit_type))
     except Exception as exc:
         path.unlink(missing_ok=True)
         raise HTTPException(400, f'Image analysis failed: {exc}')
@@ -86,7 +85,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     db.refresh(record)
 
     fusion = compute_fusion(db, sample)
-    if angle == 'live':
+    if angle.startswith('live-'):
         _trim_stream(db, sample_id)
 
     payload = {
@@ -116,5 +115,6 @@ async def upload_image(sample_id: str = Form(...), angle: str = Form('unknown'),
 
 
 @router.post('/stream-frame')
-async def stream_frame(sample_id: str = Form(...), ground_truth: str | None = Form(None), file: UploadFile = File(...), db: Session = Depends(get_db)):
-    return await _store(file, sample_id, 'live', ground_truth, 4 * 1024 * 1024, db)
+async def stream_frame(sample_id: str = Form(...), view: str = Form('front'), ground_truth: str | None = Form(None), file: UploadFile = File(...), db: Session = Depends(get_db)):
+    safe_view = view.lower() if view.lower() in {'front','back','left','right','top'} else 'front'
+    return await _store(file, sample_id, f'live-{safe_view}', ground_truth, 4 * 1024 * 1024, db)
