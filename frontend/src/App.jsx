@@ -1,17 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Camera, Cloud, Database, FlaskConical, Gauge, Leaf, Radio, RefreshCw, Smartphone, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Camera, CheckCircle2, CloudSun, FlaskConical, Gauge, Leaf, RefreshCw, Smartphone, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { QRCodeSVG } from 'qrcode.react';
-import FruitTwin from './components/FruitTwin';
 import CameraStream from './components/CameraStream';
 import { API_ROOT, bundle, context, createSample, fuse, health, listSamples, pushReading, wsUrl } from './api';
 
 const fmt = (v, d=1) => v == null ? '--' : Number(v).toFixed(d);
-function Metric({icon:Icon,label,value,unit,sub,live}){return <div className="metric glass"><div className="metricTop"><div className="metricIcon"><Icon size={18}/></div>{live&&<span className="pulseTag">LIVE</span>}</div><span>{label}</span><strong>{value}<small>{unit}</small></strong><p>{sub}</p></div>}
-function Ring({value=0}){const p=Math.max(0,Math.min(100,Number(value)||0));return <div className="ring" style={{'--p':`${p}%`}}><div><strong>{Math.round(p)}</strong><span>/100</span><small>freshness</small></div></div>}
+const isPhone = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const views = ['front','back','left','right','top'];
+
+function Status({ok,label,detail}) {
+  return <div className="statusItem"><span className={ok ? 'statusDot ok' : 'statusDot'}></span><div><b>{label}</b><small>{detail}</small></div></div>;
+}
+
+function Metric({icon:Icon,label,value,unit,detail}) {
+  return <div className="metricCard"><div className="metricIcon"><Icon size={18}/></div><div><span>{label}</span><strong>{value}<small>{unit}</small></strong><p>{detail}</p></div></div>;
+}
+
+function EvidenceCard({label,image,empty='Waiting for image'}) {
+  return <div className="evidenceCard"><div className="evidenceLabel">{label}</div>{image ? <img src={image} alt={label}/> : <div className="imageEmpty">{empty}</div>}</div>;
+}
 
 export default function App(){
   const [online,setOnline]=useState(false);
+  const [healthInfo,setHealthInfo]=useState(null);
   const [sample,setSample]=useState(null);
   const [data,setData]=useState({sensors:[],images:[],fusion:null});
   const [external,setExternal]=useState(null);
@@ -21,15 +33,26 @@ export default function App(){
   const [busy,setBusy]=useState('');
   const [err,setErr]=useState('');
   const booted=useRef(false);
+  const phoneClient=isPhone();
 
   const latest=data.sensors.at(-1)||{};
+  const latestImage=data.images?.[0]||null;
+  const analysis=latestImage?.analysis||{};
+  const color=analysis.color||{};
+  const texture=analysis.texture||{};
+  const defects=analysis.defects||{};
+  const issues=analysis.issues||[];
   const fusion=data.fusion||{};
-  const analysis=data.images?.[0]?.analysis||{};
-  const color=analysis.color||{}, texture=analysis.texture||{}, defects=analysis.defects||{};
-  const score=fusion.freshness_score ?? 68;
+  const score=fusion.freshness_score;
   const sensorConnected=Boolean(latest.device_id);
+  const phoneConnected=Boolean(latestImage && (Date.now()-new Date(latestImage.uploaded_at).getTime()) < 20000);
   const chart=useMemo(()=>data.sensors.slice(-80).map((r,i)=>({i,temperature:r.temperature,humidity:r.humidity,gas:r.gas_ppm ?? r.mq135_raw})),[data.sensors]);
+  const phoneUrl=healthInfo?.phone_dashboard || window.location.href;
+  const colorRows=(sample?.fruit_type||fruitType).toLowerCase()==='apple'
+    ? [['Red',color.red_pct],['Green',color.green_pct],['Yellow',color.yellow_pct],['Brown',color.brown_pct],['Dark',color.dark_pct]]
+    : [['Yellow',color.yellow_pct],['Green',color.green_pct],['Brown',color.brown_pct],['Dark',color.dark_pct]];
 
+  const frameFor=view=>data.images.find(img=>img.angle===view||img.angle===`live-${view}`);
   const refresh=async(id=sample?.sample_id)=>{if(!id)return;try{setData(await bundle(id));}catch(x){setErr(x.message)}};
   const loadRecent=async()=>{try{setRecent(await listSamples())}catch{}};
   const newSample=async()=>{setBusy('sample');setErr('');try{const s=await createSample(fruitType);setSample(s);setData({sensors:[],images:[],fusion:null});await refresh(s.sample_id);await loadRecent();}catch(x){setErr(x.message)}finally{setBusy('')}};
@@ -40,7 +63,7 @@ export default function App(){
   useEffect(()=>{
     if(booted.current)return;booted.current=true;
     (async()=>{
-      health().then(()=>setOnline(true)).catch(()=>setOnline(false));
+      health().then(h=>{setOnline(true);setHealthInfo(h)}).catch(()=>setOnline(false));
       try{
         const rows=await listSamples();setRecent(rows);
         if(rows.length){const active=rows[0];setSample(active);setFruitType(active.fruit_type);await refresh(active.sample_id);}
@@ -52,51 +75,71 @@ export default function App(){
   useEffect(()=>{if(!sample)return;let ws;let retry;const connect=()=>{ws=new WebSocket(wsUrl(sample.sample_id));ws.onmessage=()=>refresh(sample.sample_id);ws.onclose=()=>{retry=setTimeout(connect,1500)}};connect();return()=>{clearTimeout(retry);ws?.close();};},[sample?.sample_id]);
   useEffect(()=>{if(sample)context(sample.fruit_type).then(setExternal).catch(()=>{});},[sample?.sample_id]);
 
-  return <div className="appShell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brandMark"><Leaf/></div><div><b>FreshFusion</b><span>Fruit Intelligence OS</span></div></div>
-      <nav>{[[Gauge,'Overview'],[Camera,'Live Scan'],[Leaf,'3D Twin'],[FlaskConical,'Vision Lab'],[Radio,'Sensor Lab'],[Activity,'Fusion Engine'],[Database,'History'],[Cloud,'External Data']].map(([I,t],i)=><button className={i===0?'active':''} key={t}><I size={17}/>{t}</button>)}</nav>
-      <div className="sideStatus"><span className={online?'dot on':'dot'}></span><div><b>{online?'Backend online':'Backend offline'}</b><small>{API_ROOT}</small></div></div>
-    </aside>
+  if(phoneClient){
+    return <div className="phoneNodePage">
+      <div className="phoneTopbar"><div className="brandLine"><div className="logoMark"><Leaf size={18}/></div><div><b>FreshFusion</b><span>Phone Vision Node</span></div></div><span className={online?'phoneOnline on':'phoneOnline'}>{online?'connected':'offline'}</span></div>
+      <div className="phoneSample"><span>Active sample</span><b>{sample?.fruit_type||'Fruit'} · {sample?.sample_id||'connecting...'}</b><small>Frames from this phone are attached to the same sample as ESP32 telemetry.</small></div>
+      {err&&<div className="errorBox">{err}</div>}
+      <CameraStream sampleId={sample?.sample_id} groundTruth={truth} compact onFrame={()=>refresh()}/>
+      <label className="truthSelect"><span>Dataset label (optional)</span><select value={truth} onChange={e=>setTruth(e.target.value)}><option value="">Unlabelled</option><option value="fresh">Fresh</option><option value="ripe">Ripe</option><option value="overripe">Overripe</option><option value="spoiled">Spoiled</option></select></label>
+      <div className="phoneHelp"><CheckCircle2 size={17}/><p>Keep the fruit inside the guide. Move around it and switch Front / Back / Left / Right / Top. Images continue sending automatically.</p></div>
+    </div>;
+  }
 
-    <main>
-      <header>
-        <div><span className="eyebrow">REAL-TIME MULTIMODAL FRESHNESS LAB</span><h1>Fruit intelligence,<br/><em>streamed continuously.</em></h1><p>ESP32 telemetry arrives automatically while a phone acts as a live vision node, sending camera frames into the same fruit sample.</p></div>
-        <div className="headerActions"><select value={fruitType} onChange={e=>setFruitType(e.target.value)}><option>Banana</option><option>Apple</option><option>Orange</option><option>Mango</option></select><button className="ghost" onClick={newSample} disabled={busy==='sample'}>+ New sample</button><button className="primary" onClick={recompute}><RefreshCw size={16}/> Recompute</button></div>
-      </header>
+  return <div className="dashboard">
+    <header className="topbar">
+      <div className="brandLine"><div className="logoMark"><Leaf size={18}/></div><div><b>FreshFusion</b><span>Fruit quality analysis</span></div></div>
+      <div className="topActions"><select value={fruitType} onChange={e=>setFruitType(e.target.value)}><option>Banana</option><option>Apple</option><option>Orange</option><option>Mango</option></select><button className="secondary" onClick={newSample} disabled={busy==='sample'}>New sample</button><button className="primary" onClick={recompute}><RefreshCw size={15}/> Recompute</button></div>
+    </header>
 
-      <div className="systemStrip glass">
-        <div><span className={online?'statusOrb on':'statusOrb'}></span><b>Backend</b><small>{online?'connected':'offline'}</small></div>
-        <div><span className={sensorConnected?'statusOrb on':'statusOrb'}></span><b>ESP32</b><small>{sensorConnected?latest.device_id:'waiting for telemetry'}</small></div>
-        <div><span className={data.images.length?'statusOrb on':'statusOrb'}></span><b>Vision node</b><small>{data.images.length?`${data.images.length} frames in active buffer`:'waiting for phone'}</small></div>
-        <div><span className="statusOrb on"></span><b>Active sample</b><small>{sample?.sample_id||'initialising'}</small></div>
-      </div>
-      {err&&<div className="error">{err}</div>}
-
-      <section className="heroGrid">
-        <div className="twin glass"><div className="panelTitle"><div><span>DIGITAL TWIN</span><h2>{sample?.fruit_type||'Fruit'} · {sample?.sample_id||'...'}</h2></div><div className="liveChip"><span></span>3D DATA TWIN</div></div><div className="canvasWrap"><FruitTwin fruit={sample?.fruit_type} score={score}/><div className="scanLines"></div></div><div className="twinFoot"><span>Drag to rotate</span><span>Surface reacts to score</span><span>{data.images.length} vision frames</span></div></div>
-        <div className="scorePanel glass"><span className="eyebrow">FUSION ENGINE</span><Ring value={score}/><h3 className={`label ${fusion.label||'collecting'}`}>{(fusion.label||'COLLECTING').toUpperCase()}</h3><div className="confidence"><span>Confidence</span><b>{fmt(fusion.confidence,0)}%</b></div><div className="scoreSplit"><div><small>Sensor</small><b>{fmt(fusion.sensor_score,0)}</b></div><div><small>Vision</small><b>{fmt(fusion.vision_score,0)}</b></div><div><small>Risk</small><b>{fusion.risk||'--'}</b></div></div><p className="disclaimer">Prototype intelligence score; calibrate on labelled experimental data before scientific claims.</p></div>
+    <main className="content">
+      <section className="contextRow">
+        <div><span className="sectionKicker">ACTIVE ANALYSIS</span><h1>{sample?.fruit_type||fruitType} <small>{sample?.sample_id||'initialising'}</small></h1><p>Live sensor evidence and phone images are combined into one sample record.</p></div>
+        <div className="statusBar"><Status ok={online} label="Backend" detail={online?'online':'offline'}/><Status ok={sensorConnected} label="ESP32" detail={sensorConnected?latest.device_id:'waiting'}/><Status ok={phoneConnected} label="Phone camera" detail={phoneConnected?'streaming':'waiting'}/></div>
       </section>
 
-      <section className="metrics">
-        <Metric icon={Thermometer} label="Temperature" value={fmt(latest.temperature)} unit="°C" sub="ESP32 chamber" live={sensorConnected}/>
-        <Metric icon={Activity} label="Humidity" value={fmt(latest.humidity)} unit="%" sub="ESP32 chamber" live={sensorConnected}/>
-        <Metric icon={Gauge} label="Gas signal" value={fmt(latest.gas_ppm ?? latest.mq135_raw,0)} unit={latest.gas_ppm?' ppm':' raw'} sub="MQ sensor" live={sensorConnected}/>
-        <Metric icon={sensorConnected?Wifi:WifiOff} label="ESP32 link" value={fmt(latest.rssi,0)} unit=" dBm" sub={latest.device_id||'connect board + Wi-Fi'} live={sensorConnected}/>
+      {err&&<div className="errorBox">{err}</div>}
+
+      <section className="primaryGrid">
+        <div className="liveEvidence panel">
+          <div className="panelHead"><div><span>VISUAL EVIDENCE</span><h2>What the camera sees now</h2></div><div className={phoneConnected?'liveBadge on':'liveBadge'}>{phoneConnected?'LIVE':'WAITING'}</div></div>
+          <div className="mainImageWrap">{latestImage?<img src={latestImage.url} alt="Latest fruit frame"/>:<div className="largeEmpty"><Camera size={34}/><b>No phone image yet</b><span>Scan the phone QR and allow the camera.</span></div>}</div>
+          <div className="viewRail">{views.map(view=>{const frame=frameFor(view);return <div className="viewThumb" key={view}>{frame?<img src={frame.url} alt={`${view} view`}/>:<div className="thumbEmpty">—</div>}<span>{view}</span></div>})}</div>
+        </div>
+
+        <div className="decisionPanel panel">
+          <div className="panelHead"><div><span>SUMMARY</span><h2>Current condition</h2></div></div>
+          <div className="scoreBlock"><strong>{score==null?'--':Math.round(score)}</strong><span>/100 freshness</span></div>
+          <div className="resultLabel">{(fusion.label||'collecting').replace('-', ' ')}</div>
+          <div className="summaryRows"><div><span>Confidence</span><b>{fmt(fusion.confidence,0)}%</b></div><div><span>Sensor score</span><b>{fmt(fusion.sensor_score,0)}</b></div><div><span>Vision score</span><b>{fmt(fusion.vision_score,0)}</b></div><div><span>Risk</span><b>{fusion.risk||'--'}</b></div></div>
+          <p className="quietNote">Prototype score for research and calibration; not a food-safety verdict.</p>
+        </div>
       </section>
 
-      <section className="liveGrid">
-        <div className="glass cameraCard"><CameraStream sampleId={sample?.sample_id} groundTruth={truth} onFrame={()=>refresh()}/><div className="truthRow"><span>Optional ground-truth label for dataset building</span><select value={truth} onChange={e=>setTruth(e.target.value)}><option value="">Unlabelled</option><option value="fresh">Fresh</option><option value="ripe">Ripe</option><option value="overripe">Overripe</option><option value="spoiled">Spoiled</option></select></div></div>
-        <div className="telemetry glass"><div className="panelTitle"><div><span>ESP32 LIVE BUS</span><h2>Sensor telemetry</h2></div><button className="mini" onClick={simulate}>Test packet</button></div><div className="chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#62f59c" stopOpacity=".35"/><stop offset="1" stopColor="#62f59c" stopOpacity="0"/></linearGradient></defs><CartesianGrid stroke="#173326" vertical={false}/><XAxis dataKey="i" hide/><YAxis stroke="#5a7568" fontSize={11}/><Tooltip contentStyle={{background:'#07120d',border:'1px solid #234737'}}/><Area type="monotone" dataKey="temperature" stroke="#62f59c" fill="url(#g1)" strokeWidth={2}/><Area type="monotone" dataKey="humidity" stroke="#8dd7ff" fillOpacity={0}/><Area type="monotone" dataKey="gas" stroke="#ffd76b" fillOpacity={0}/></AreaChart></ResponsiveContainer></div><div className="legend"><span className="green">Temperature</span><span className="blue">Humidity</span><span className="yellow">Gas</span><span>{data.sensors.length} readings buffered</span></div></div>
+      <section className="metricGrid">
+        <Metric icon={Thermometer} label="Temperature" value={fmt(latest.temperature)} unit="°C" detail="Chamber"/>
+        <Metric icon={Activity} label="Humidity" value={fmt(latest.humidity)} unit="%" detail="Relative humidity"/>
+        <Metric icon={Gauge} label="Gas signal" value={fmt(latest.gas_ppm ?? latest.mq135_raw,0)} unit={latest.gas_ppm?' ppm':' raw'} detail="MQ sensor"/>
+        <Metric icon={sensorConnected?Wifi:WifiOff} label="ESP32 link" value={fmt(latest.rssi,0)} unit=" dBm" detail={latest.device_id||'Not connected'}/>
       </section>
 
-      <section className="visionLab glass"><div className="panelTitle"><div><span>VISION LAB</span><h2>Latest streamed frame · processing artifacts · AI</h2></div><FlaskConical size={20}/></div><div className="visionGrid"><div className="visionCard"><span>LIVE FRAME</span>{data.images?.[0]?.url?<img src={data.images[0].url}/>:<div className="placeholder">Waiting for phone stream</div>}</div><div className="visionCard"><span>FRUIT MASK</span>{analysis.artifacts?.mask?<img src={analysis.artifacts.mask}/>:<div className="placeholder">Waiting</div>}</div><div className="visionCard"><span>DEFECT OVERLAY</span>{analysis.artifacts?.defect_overlay?<img src={analysis.artifacts.defect_overlay}/>:<div className="placeholder">Waiting</div>}</div><div className="visionCard"><span>EDGE MAP</span>{analysis.artifacts?.edges?<img src={analysis.artifacts.edges}/>:<div className="placeholder">Waiting</div>}</div></div><div className="aiStrip"><div><span className="eyebrow">AI MODEL</span><h3>{analysis.ai?.status==='ready'?`${analysis.ai.prediction} · ${fmt(analysis.ai.confidence)}%`:'Training-ready vision pipeline'}</h3><p>{analysis.ai?.status==='ready'?'Deep-learning output is included in the live vision score.':'Computer vision works now; real deep-learning prediction activates after labelled dataset training.'}</p></div><div className="probabilities">{Object.entries(analysis.ai?.probabilities||{}).map(([k,v])=><div key={k}><span>{k}</span><b>{fmt(v)}%</b></div>)}</div></div></section>
+      <section className="twoCol">
+        <div className="panel telemetryPanel"><div className="panelHead"><div><span>SENSOR TREND</span><h2>Recent environment</h2></div><button className="textButton" onClick={simulate}>Send test packet</button></div><div className="chartWrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><CartesianGrid stroke="#e6e9ed" vertical={false}/><XAxis dataKey="i" hide/><YAxis stroke="#7b8490" fontSize={11}/><Tooltip/><Area type="monotone" dataKey="temperature" stroke="#247a57" fill="#247a5714" strokeWidth={2}/><Area type="monotone" dataKey="humidity" stroke="#3b6aa0" fillOpacity={0}/><Area type="monotone" dataKey="gas" stroke="#a56b20" fillOpacity={0}/></AreaChart></ResponsiveContainer></div><div className="legend"><span><i className="g"></i>Temperature</span><span><i className="b"></i>Humidity</span><span><i className="y"></i>Gas</span><small>{data.sensors.length} readings</small></div></div>
 
-      <section className="intelligenceGrid"><div className="glass intel"><span className="eyebrow">COLOR INTELLIGENCE</span><h2>Surface chromatics</h2><div className="bars">{[['Yellow',color.yellow_pct],['Green',color.green_pct],['Brown',color.brown_pct],['Dark',color.dark_pct]].map(([n,v])=><div key={n}><div><span>{n}</span><b>{fmt(v)}%</b></div><i><u style={{width:`${Math.min(100,v||0)}%`}}/></i></div>)}</div></div><div className="glass intel"><span className="eyebrow">TEXTURE INTELLIGENCE</span><h2>Surface structure</h2><div className="statRows"><div><span>Entropy</span><b>{fmt(texture.entropy,2)}</b></div><div><span>Roughness</span><b>{fmt(texture.roughness_index)}</b></div><div><span>Edge density</span><b>{fmt(texture.edge_density_pct)}%</b></div><div><span>Laplacian variance</span><b>{fmt(texture.laplacian_variance,0)}</b></div></div></div><div className="glass intel"><span className="eyebrow">DEFECT INTELLIGENCE</span><h2>Visible damage</h2><div className="bigStat">{fmt(defects.healthy_surface_estimate_pct,0)}<small>% healthy</small></div><div className="statRows"><div><span>Brown regions</span><b>{fmt(defects.brown_region_pct)}%</b></div><div><span>Dark regions</span><b>{fmt(defects.dark_region_pct)}%</b></div><div><span>Damage estimate</span><b>{fmt(defects.visible_damage_estimate_pct)}%</b></div></div></div></section>
+        <div className="pairPanel panel"><div className="panelHead"><div><span>PHONE CONNECTION</span><h2>Connect the camera node</h2></div><Smartphone size={20}/></div><div className="pairBody"><div><ol><li>Phone and laptop on the same Wi‑Fi.</li><li>Scan this code.</li><li>Allow camera once.</li><li>Camera starts sending frames automatically.</li></ol><small>{phoneUrl}</small></div><div className="qrBox"><QRCodeSVG value={phoneUrl} size={132} bgColor="#ffffff" fgColor="#17221d"/></div></div></div>
+      </section>
 
-      <section className="bottomGrid"><div className="glass external"><div className="panelTitle"><div><span>ONLINE CONTEXT</span><h2>Reference + live outside environment</h2></div><Cloud size={20}/></div><div className="externalStats"><div><small>Outside temp</small><b>{fmt(external?.weather?.temperature_c)}°C</b></div><div><small>Outside RH</small><b>{fmt(external?.weather?.humidity_pct)}%</b></div><div><small>Storage reference</small><b>{external?.baseline?.storage_temp_c||'--'}°C</b></div><div><small>Reference RH</small><b>{external?.baseline?.relative_humidity_pct||'--'}%</b></div></div><button className="ghost" onClick={getWeather}>Enable local live weather</button><p>{external?.weather?.source?`Live source: ${external.weather.source}. `:''}{external?.baseline?.note}</p></div><div className="glass phone"><div><span className="eyebrow">PHONE VISION PAIRING</span><h2>Scan → grant camera once → stream automatically</h2><p>Use the HTTPS dashboard address shown here. The first visit requires browser camera permission; after permission is granted the rear camera starts automatically on supported phones.</p></div><div className="qr"><QRCodeSVG value={window.location.href} size={126} bgColor="#07120d" fgColor="#66f3a3"/><small>{window.location.href}</small></div></div></section>
+      <section className="panel evidencePanel"><div className="panelHead"><div><span>IMAGE ANALYSIS</span><h2>Evidence, not decoration</h2></div><FlaskConical size={20}/></div><div className="evidenceGrid"><EvidenceCard label="Original" image={latestImage?.url}/><EvidenceCard label="Defect overlay" image={analysis.artifacts?.defect_overlay}/><EvidenceCard label="Texture map" image={analysis.artifacts?.texture}/><EvidenceCard label="Fruit mask" image={analysis.artifacts?.mask}/><EvidenceCard label="Edge map" image={analysis.artifacts?.edges}/></div></section>
 
-      <section className="history glass"><div className="panelTitle"><div><span>SAMPLE HISTORY</span><h2>Recent fruit sessions</h2></div><Database size={20}/></div><div className="historyRows">{recent.slice(0,8).map(s=><button key={s.sample_id} onClick={()=>{setSample(s);setFruitType(s.fruit_type);refresh(s.sample_id)}} className={s.sample_id===sample?.sample_id?'selected':''}><b>{s.sample_id}</b><span>{s.fruit_type}</span><small>{s.status||'collecting'}</small></button>)}</div></section>
+      <section className="analysisGrid">
+        <div className="panel"><div className="panelHead"><div><span>OBSERVATIONS</span><h2>What needs attention</h2></div></div><div className="issueList">{issues.length?issues.map((issue,i)=><div className={`issue ${issue.severity}`} key={`${issue.label}-${i}`}><div><b>{issue.label}</b><span>{issue.note}</span></div><strong>{fmt(issue.value)}{issue.label.toLowerCase().includes('rough')?'':'%'}</strong></div>):<div className="noIssues">No strong visual warning has been detected in the latest frame.</div>}</div></div>
+
+        <div className="panel"><div className="panelHead"><div><span>COLOR</span><h2>{sample?.fruit_type||fruitType} surface profile</h2></div></div><div className="barList">{colorRows.map(([name,value])=><div key={name}><div><span>{name}</span><b>{fmt(value)}%</b></div><progress max="100" value={value||0}></progress></div>)}</div></div>
+
+        <div className="panel"><div className="panelHead"><div><span>TEXTURE</span><h2>Surface structure</h2></div></div><div className="dataRows"><div><span>Entropy</span><b>{fmt(texture.entropy,2)}</b></div><div><span>Roughness</span><b>{fmt(texture.roughness_index)}</b></div><div><span>Edge density</span><b>{fmt(texture.edge_density_pct)}%</b></div><div><span>Laplacian variance</span><b>{fmt(texture.laplacian_variance,0)}</b></div><div><span>Healthy surface estimate</span><b>{fmt(defects.healthy_surface_estimate_pct,0)}%</b></div></div></div>
+      </section>
+
+      <details className="detailPanel panel"><summary>External context and experimental details</summary><div className="detailContent"><div><h3>Outside environment</h3><p>Temperature: <b>{fmt(external?.weather?.temperature_c)}°C</b> · Humidity: <b>{fmt(external?.weather?.humidity_pct)}%</b></p><p>Reference storage: <b>{external?.baseline?.storage_temp_c||'--'}°C</b> · RH: <b>{external?.baseline?.relative_humidity_pct||'--'}%</b></p><button className="secondary" onClick={getWeather}><CloudSun size={15}/> Use current location</button></div><div><h3>Recent samples</h3><div className="recentSamples">{recent.slice(0,6).map(s=><button key={s.sample_id} onClick={()=>{setSample(s);setFruitType(s.fruit_type);refresh(s.sample_id)}}>{s.fruit_type}<small>{s.sample_id}</small></button>)}</div></div></div></details>
     </main>
   </div>;
 }
