@@ -3,7 +3,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 class SampleCreate(BaseModel):
-    fruit_type: str = "Banana"
+    fruit_type: str = "Auto"
     variety: str | None = None
     source: str | None = None
 
