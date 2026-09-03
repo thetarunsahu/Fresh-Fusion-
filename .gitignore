@@ -25,5 +25,7 @@ uploads/*
 !uploads/.gitkeep
 models/*.pt
 models/*.pth
+models/public_reference_index.json
+.datasets/
 .runtime/
 .tools/
