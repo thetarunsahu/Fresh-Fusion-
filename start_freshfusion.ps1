@@ -120,12 +120,15 @@ try {
     Remove-Item $frontendOut, $frontendErr -Force -ErrorAction SilentlyContinue
 
     Write-Host '[1/3] Starting dashboard...' -ForegroundColor Cyan
-    $frontendProcess = Start-Process -FilePath 'cmd.exe' \
-        -ArgumentList @('/c', 'npm run dev') \
-        -WorkingDirectory $FrontendDir \
-        -PassThru \
-        -RedirectStandardOutput $frontendOut \
-        -RedirectStandardError $frontendErr
+    $frontendParams = @{
+        FilePath = 'cmd.exe'
+        ArgumentList = @('/c', 'npm run dev')
+        WorkingDirectory = $FrontendDir
+        PassThru = $true
+        RedirectStandardOutput = $frontendOut
+        RedirectStandardError = $frontendErr
+    }
+    $frontendProcess = Start-Process @frontendParams
     Wait-Port $FrontendPort 'Frontend'
 
     $tunnelOut = Join-Path $RuntimeDir 'tunnel.out.log'
@@ -133,11 +136,14 @@ try {
     Remove-Item $tunnelOut, $tunnelErr -Force -ErrorAction SilentlyContinue
 
     Write-Host '[2/3] Creating trusted HTTPS phone link...' -ForegroundColor Cyan
-    $tunnelProcess = Start-Process -FilePath $cloudflared \
-        -ArgumentList @('tunnel', '--url', "http://127.0.0.1:$FrontendPort", '--no-autoupdate') \
-        -PassThru \
-        -RedirectStandardOutput $tunnelOut \
-        -RedirectStandardError $tunnelErr
+    $tunnelParams = @{
+        FilePath = $cloudflared
+        ArgumentList = @('tunnel', '--url', "http://127.0.0.1:$FrontendPort", '--no-autoupdate')
+        PassThru = $true
+        RedirectStandardOutput = $tunnelOut
+        RedirectStandardError = $tunnelErr
+    }
+    $tunnelProcess = Start-Process @tunnelParams
 
     $tunnelUrl = $null
     $deadline = (Get-Date).AddSeconds(45)
@@ -167,12 +173,15 @@ try {
     Remove-Item $backendOut, $backendErr -Force -ErrorAction SilentlyContinue
 
     Write-Host '[3/3] Starting FastAPI backend...' -ForegroundColor Cyan
-    $backendProcess = Start-Process -FilePath $venvPython \
-        -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', "$BackendPort") \
-        -WorkingDirectory $BackendDir \
-        -PassThru \
-        -RedirectStandardOutput $backendOut \
-        -RedirectStandardError $backendErr
+    $backendParams = @{
+        FilePath = $venvPython
+        ArgumentList = @('-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', "$BackendPort")
+        WorkingDirectory = $BackendDir
+        PassThru = $true
+        RedirectStandardOutput = $backendOut
+        RedirectStandardError = $backendErr
+    }
+    $backendProcess = Start-Process @backendParams
     Wait-Port $BackendPort 'Backend'
 
     $lanIp = Get-LanIp
