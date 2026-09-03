@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CheckCircle2, Leaf, RefreshCw, WifiOff } from 'lucide-react';
 import CameraStream from './components/CameraStream';
@@ -91,6 +91,4 @@ function PhoneVisionApp() {
   </div>;
 }
 
-createRoot(document.getElementById('phone-root')).render(
-  <StrictMode><PhoneVisionApp /></StrictMode>
-);
+createRoot(document.getElementById('phone-root')).render(<PhoneVisionApp />);
