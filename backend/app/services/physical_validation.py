@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from statistics import median
 
 from sqlalchemy.orm import Session
@@ -23,19 +24,32 @@ def _hamming_hex(a: str | None, b: str | None) -> int | None:
         return None
 
 
+def _recent_sensor_present(sensors: list[SensorReading], max_age_seconds: float = 45.0) -> bool:
+    if not sensors:
+        return False
+    newest = max((row.captured_at for row in sensors if row.captured_at is not None), default=None)
+    if newest is None:
+        return False
+    try:
+        age = (datetime.utcnow() - newest).total_seconds()
+        return -5.0 <= age <= max_age_seconds
+    except Exception:
+        return True
+
+
 def evaluate_physical_evidence(
     db: Session,
     sample: FruitSample,
     images: list[FruitImage] | None = None,
     sensors: list[SensorReading] | None = None,
 ) -> dict:
-    """Estimate whether the current evidence is consistent with a real 3D fruit.
+    """Estimate whether current evidence is consistent with a real 3D fruit.
 
-    This is intentionally a *gate*, not a claim of guaranteed anti-spoofing. A
-    monocular browser camera cannot prove physical liveness from one frame. We
-    therefore combine display-artifact suspicion, repeated identity, multiple
-    labelled viewpoints, and appearance change across the fruit crop. Final
-    FreshFusion verdicts additionally require ESP32 telemetry.
+    This is a gate, not a guaranteed anti-spoof claim. A monocular browser camera
+    cannot prove physical liveness from one frame. FreshFusion combines display-
+    artifact suspicion, repeated identity, multiple labelled viewpoints and
+    appearance change across the fruit crop. Final multimodal verdicts also
+    require recent ESP32 telemetry.
     """
 
     if images is None:
@@ -55,6 +69,7 @@ def evaluate_physical_evidence(
             .all()
         )
 
+    sensor_present = _recent_sensor_present(sensors)
     expected = (sample.fruit_type or "").strip().lower()
     usable: list[FruitImage] = []
     for row in images:
@@ -81,13 +96,10 @@ def evaluate_physical_evidence(
             "screen_suspicion_pct": 0.0,
             "appearance_diversity_pct": 0.0,
             "identity_consistency_pct": 0.0,
-            "sensor_present": bool(sensors),
+            "sensor_present": sensor_present,
             "message": "Place one real fruit inside the camera guide before FreshFusion can verify physical evidence.",
         }
 
-    # Keep the newest usable image for each user-labelled viewpoint. This makes
-    # the verification depend on changed viewpoints instead of many near-
-    # duplicate frames from the same angle.
     latest_by_view: dict[str, FruitImage] = {}
     for row in usable:
         view = _view_name(row.angle)
@@ -126,12 +138,10 @@ def evaluate_physical_evidence(
             value = _hamming_hex(hashes[i], hashes[j])
             if value is not None:
                 distances.append(value)
-    # dHash is 64 bits. Express the median inter-view change as 0..100.
     diversity = (median(distances) / 64.0 * 100.0) if distances else 0.0
 
     enough_frames = len(usable) >= 4
     enough_views = len(views) >= 3
-    sensor_present = bool(sensors)
     screen_suspected = screen_avg >= 52.0 or screen_peak >= 78.0
     repeated_flat_reference = enough_views and len(hashes) >= 3 and diversity < 7.0
     identity_stable = identity_consistency >= 0.66
@@ -157,8 +167,7 @@ def evaluate_physical_evidence(
         confidence = min(65.0, 12.0 + len(views) * 11.0 + min(15.0, diversity * 0.35))
         missing = max(0, 3 - len(views))
         message = (
-            f"Collect {missing} more distinct viewpoint{'s' if missing != 1 else ''} of the real fruit. "
-            "Use Front, Left/Right and Back/Top while physically moving around the fruit."
+            f"Collect {missing} more distinct viewpoint{'s' if missing != 1 else ''} of the real fruit. Use Front, Left/Right and Back/Top while physically moving around the fruit."
             if missing
             else "Keep moving around the real fruit so FreshFusion can verify 3D appearance change."
         )
@@ -166,7 +175,7 @@ def evaluate_physical_evidence(
     vision_verified = physical_likely
     verdict_ready = physical_likely and sensor_present
     if physical_likely and not sensor_present:
-        message += " Physical vision is verified; final multimodal verdict is waiting for ESP32 telemetry."
+        message += " Physical vision is verified; final multimodal verdict is waiting for recent ESP32 telemetry."
 
     return {
         "status": status,
@@ -183,6 +192,7 @@ def evaluate_physical_evidence(
         "appearance_diversity_pct": round(diversity, 1),
         "identity_consistency_pct": round(identity_consistency * 100.0, 1),
         "sensor_present": sensor_present,
+        "sensor_freshness_window_seconds": 45,
         "message": message,
         "note": "Monocular anti-spoofing is probabilistic. Stronger production verification would use depth/stereo/NIR or a controlled mechanical multi-view rig.",
     }
