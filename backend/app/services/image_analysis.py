@@ -69,12 +69,7 @@ def _fruit_mask(image: np.ndarray) -> tuple[np.ndarray, dict]:
 def _shape(mask: np.ndarray) -> dict:
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return {
-            "aspect_ratio": 0.0,
-            "circularity": 0.0,
-            "solidity": 0.0,
-            "extent": 0.0,
-        }
+        return {"aspect_ratio": 0.0, "circularity": 0.0, "solidity": 0.0, "extent": 0.0}
     contour = max(contours, key=cv2.contourArea)
     area = max(float(cv2.contourArea(contour)), 1.0)
     perimeter = max(float(cv2.arcLength(contour, True)), 1.0)
@@ -89,6 +84,94 @@ def _shape(mask: np.ndarray) -> dict:
         "circularity": round(max(0.0, min(1.0, 4.0 * math.pi * area / (perimeter * perimeter))), 3),
         "solidity": round(max(0.0, min(1.0, area / hull_area)), 3),
         "extent": round(max(0.0, min(1.0, area / max(float(bw * bh), 1.0))), 3),
+    }
+
+
+def _fruit_fingerprint(gray: np.ndarray, mask: np.ndarray) -> str | None:
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    x, y, w, h = cv2.boundingRect(max(contours, key=cv2.contourArea))
+    if w < 8 or h < 8:
+        return None
+    crop = gray[y:y + h, x:x + w].copy()
+    crop_mask = mask[y:y + h, x:x + w]
+    if np.any(crop_mask > 0):
+        fill = int(np.median(crop[crop_mask > 0]))
+        crop[crop_mask == 0] = fill
+    small = cv2.resize(crop, (9, 8), interpolation=cv2.INTER_AREA)
+    diff = small[:, 1:] > small[:, :-1]
+    value = 0
+    for bit in diff.flatten():
+        value = (value << 1) | int(bool(bit))
+    return f"{value:016x}"
+
+
+def _periodicity(profile: np.ndarray) -> float:
+    if profile.size < 16:
+        return 0.0
+    values = profile.astype(np.float64)
+    values -= values.mean()
+    spectrum = np.abs(np.fft.rfft(values))[1:]
+    total = float(spectrum.sum())
+    if total <= 1e-9:
+        return 0.0
+    return float(np.max(spectrum) / total)
+
+
+def _presentation_metrics(gray: np.ndarray, edges: np.ndarray, mask: np.ndarray) -> dict:
+    """Heuristics for obvious monitor/photo presentation artifacts.
+
+    These do not prove liveness. They are combined later with multi-view change.
+    """
+    h, w = gray.shape[:2]
+    frame_area = max(float(h * w), 1.0)
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    largest_quad = 0.0
+    for contour in contours:
+        area = float(cv2.contourArea(contour))
+        if area < frame_area * 0.12:
+            continue
+        perimeter = cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            largest_quad = max(largest_quad, area / frame_area)
+
+    min_len = max(40, int(min(h, w) * 0.18))
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=70, minLineLength=min_len, maxLineGap=12)
+    axis_lines = 0
+    long_lines = 0
+    if lines is not None:
+        for row in lines[:120]:
+            x1, y1, x2, y2 = row[0]
+            dx, dy = abs(x2 - x1), abs(y2 - y1)
+            length = math.hypot(dx, dy)
+            if length < min_len:
+                continue
+            long_lines += 1
+            angle = abs(math.degrees(math.atan2(dy, max(dx, 1e-6))))
+            if angle <= 8 or angle >= 82:
+                axis_lines += 1
+    axis_ratio = axis_lines / max(long_lines, 1)
+    line_score = min(1.0, axis_lines / 12.0) * (0.55 + 0.45 * axis_ratio)
+
+    gx = np.abs(np.diff(gray.astype(np.float32), axis=1)).mean(axis=0)
+    gy = np.abs(np.diff(gray.astype(np.float32), axis=0)).mean(axis=1)
+    periodicity = max(_periodicity(gx), _periodicity(gy))
+    periodic_score = min(1.0, periodicity / 0.16)
+
+    quad_score = max(0.0, min(1.0, (largest_quad - 0.18) / 0.55))
+    suspicion = max(quad_score * 78.0, quad_score * 55.0 + line_score * 25.0 + periodic_score * 20.0)
+
+    return {
+        "screen_suspicion_pct": round(min(100.0, suspicion), 1),
+        "largest_quadrilateral_pct": round(largest_quad * 100.0, 1),
+        "axis_line_score_pct": round(line_score * 100.0, 1),
+        "periodicity_score_pct": round(periodic_score * 100.0, 1),
+        "fruit_fingerprint": _fruit_fingerprint(gray, mask),
+        "method": "large-quadrilateral + straight-line + periodic-display artifact heuristics",
+        "note": "Single-frame screen/photo detection is heuristic. Final physical verification also requires multiple changed viewpoints.",
     }
 
 
@@ -110,25 +193,20 @@ def _detect_identity(shape: dict, color: dict, quality: dict) -> dict:
 
     banana_score = 0.0
     apple_score = 0.0
-
     banana_score += min(1.0, max(0.0, (aspect - 1.25) / 1.05)) * 0.62
     banana_score += min(1.0, max(0.0, (0.72 - circularity) / 0.35)) * 0.20
     banana_score += min(1.0, yellow_green / 55.0) * 0.18
-
     apple_score += min(1.0, max(0.0, (1.48 - aspect) / 0.58)) * 0.52
     apple_score += min(1.0, max(0.0, (circularity - 0.48) / 0.42)) * 0.28
     apple_score += min(1.0, max(red / 45.0, solidity)) * 0.20
 
     total = banana_score + apple_score
     if total <= 0.15:
-        fruit = "Unknown"
-        confidence = 0.0
+        fruit, confidence = "Unknown", 0.0
     elif banana_score >= apple_score:
-        fruit = "Banana"
-        confidence = banana_score / max(total, 1e-6)
+        fruit, confidence = "Banana", banana_score / max(total, 1e-6)
     else:
-        fruit = "Apple"
-        confidence = apple_score / max(total, 1e-6)
+        fruit, confidence = "Apple", apple_score / max(total, 1e-6)
 
     separation = abs(banana_score - apple_score)
     confidence = min(0.96, max(0.0, confidence * (0.72 + min(0.28, separation))))
@@ -187,6 +265,7 @@ def analyze_image(path: Path, fruit_type: str = "Auto") -> dict:
 
     lap = cv2.Laplacian(gray, cv2.CV_64F)
     edges = cv2.Canny(gray, 75, 150)
+    presentation = _presentation_metrics(gray, edges, mask)
     masked_gray = gray[mask > 0]
     hist, _ = np.histogram(masked_gray if len(masked_gray) else gray.ravel(), bins=256, range=(0, 256))
     probs = hist / max(hist.sum(), 1)
@@ -216,7 +295,7 @@ def analyze_image(path: Path, fruit_type: str = "Auto") -> dict:
         "coverage_pct": coverage,
         "center_offset": center_offset,
         "status": "usable" if fruit_present else "no_centered_fruit",
-        "message": "Fruit detected inside the scan region." if fruit_present else "No reliable centered fruit detected. Keep the fruit inside the phone guide before trusting freshness output.",
+        "message": "Fruit-like region detected inside the scan area; physical-object verification still requires multiple viewpoints." if fruit_present else "No reliable centered fruit detected. Keep the fruit inside the phone guide before trusting freshness output.",
     }
     identity = _detect_identity(shape, color, quality)
 
@@ -238,13 +317,10 @@ def analyze_image(path: Path, fruit_type: str = "Auto") -> dict:
             issues.append(_issue("Surface roughness", "medium", roughness, "Texture variation is elevated compared with a smooth surface."))
         if edge_density >= 12:
             issues.append(_issue("High surface detail", "low", edge_density, "High edge density can come from wrinkles, spots, texture or lighting."))
-
-        if profile_fruit.lower() == "banana":
-            if green_pct >= 28:
-                issues.append(_issue("Strong green coverage", "info", green_pct, "This is more consistent with an earlier banana ripening stage than spoilage."))
-        elif profile_fruit.lower() == "apple":
-            if red_pct + green_pct + yellow_pct < 28 and brown_pct > 4:
-                issues.append(_issue("Color loss / discoloration", "medium", brown_pct, "Apple skin has relatively little healthy red, green or yellow coverage in this frame."))
+        if profile_fruit.lower() == "banana" and green_pct >= 28:
+            issues.append(_issue("Strong green coverage", "info", green_pct, "This is more consistent with an earlier banana ripening stage than spoilage."))
+        elif profile_fruit.lower() == "apple" and red_pct + green_pct + yellow_pct < 28 and brown_pct > 4:
+            issues.append(_issue("Color loss / discoloration", "medium", brown_pct, "Apple skin has relatively little healthy red, green or yellow coverage in this frame."))
 
     stem = path.stem
     mask_name = f"{stem}_mask.png"
@@ -273,6 +349,7 @@ def analyze_image(path: Path, fruit_type: str = "Auto") -> dict:
         "fruit_type": profile_fruit,
         "identity": identity,
         "quality": quality,
+        "presentation": presentation,
         "dimensions": {"width": int(w), "height": int(h)},
         "segmentation": segmentation,
         "color": color,
