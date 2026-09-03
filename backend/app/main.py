@@ -11,7 +11,7 @@ from .realtime import manager
 Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="FreshFusion API",
-    version="2.2.0",
+    version="2.2.1",
     description="Multimodal fruit intelligence backend for ESP32 telemetry, continuous phone vision, computer vision and fusion scoring.",
 )
 app.add_middleware(
@@ -42,25 +42,29 @@ def _lan_ip() -> str:
 @app.get("/api/v1/health")
 def health():
     lan_ip = _lan_ip()
+    backend_port = int(os.getenv("FRESHFUSION_BACKEND_PORT", "8000"))
+    frontend_port = int(os.getenv("FRESHFUSION_FRONTEND_PORT", "5173"))
     public_phone_url = os.getenv("PHONE_DASHBOARD_URL", "").strip()
     if public_phone_url:
         phone_dashboard = public_phone_url
         phone_mode = "trusted-https-tunnel" if public_phone_url.startswith("https://") else "configured"
         camera_secure = public_phone_url.startswith("https://")
     else:
-        phone_dashboard = f"http://{lan_ip}:5173/phone.html"
+        phone_dashboard = f"http://{lan_ip}:{frontend_port}/phone.html"
         phone_mode = "lan-fallback"
         camera_secure = False
 
     return {
         "status": "online",
         "service": "FreshFusion",
-        "version": "2.2.0",
+        "version": "2.2.1",
         "lan_ip": lan_ip,
         "phone_dashboard": phone_dashboard,
         "phone_mode": phone_mode,
         "camera_secure": camera_secure,
-        "esp32_endpoint": f"http://{lan_ip}:8000/api/v1/sensors/readings",
+        "backend_port": backend_port,
+        "frontend_port": frontend_port,
+        "esp32_endpoint": f"http://{lan_ip}:{backend_port}/api/v1/sensors/readings",
     }
 
 
