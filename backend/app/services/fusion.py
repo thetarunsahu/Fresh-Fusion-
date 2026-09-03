@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
+
 from ..models import FruitImage, FruitSample, FusionResult, SensorReading
+from .physical_validation import evaluate_physical_evidence
 
 
 def _clamp(v: float) -> float:
@@ -33,8 +35,19 @@ def _usable_images(images: list[FruitImage], sample: FruitSample) -> list[FruitI
 
 
 def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
-    sensors = db.query(SensorReading).filter(SensorReading.sample_id == sample.sample_id).order_by(SensorReading.captured_at.desc()).limit(20).all()
-    images = db.query(FruitImage).filter(FruitImage.sample_id == sample.sample_id).order_by(FruitImage.uploaded_at.desc()).all()
+    sensors = (
+        db.query(SensorReading)
+        .filter(SensorReading.sample_id == sample.sample_id)
+        .order_by(SensorReading.captured_at.desc())
+        .limit(20)
+        .all()
+    )
+    images = (
+        db.query(FruitImage)
+        .filter(FruitImage.sample_id == sample.sample_id)
+        .order_by(FruitImage.uploaded_at.desc())
+        .all()
+    )
 
     sensor_score = None
     sensor_components = {}
@@ -57,6 +70,8 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
             "humidity_penalty": round(humidity_penalty, 2),
             "gas_penalty": round(gas_penalty, 2),
         }
+
+    validation = evaluate_physical_evidence(db, sample, images=images, sensors=sensors)
 
     vision_score = None
     vision_components = {}
@@ -86,7 +101,7 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
         dark = sum(dark_values) / len(dark_values)
         angles = {_view_name(i.angle) for i in valid_images if _view_name(i.angle) in {"front", "back", "left", "right", "top"}}
         coverage = min(1.0, len(angles) / 5.0)
-        vision_score = _clamp(healthy - brown * 0.20 - dark * 0.35)
+        provisional_vision_score = _clamp(healthy - brown * 0.20 - dark * 0.35)
 
         ai_ready = [i.analysis.get("ai", {}) for i in valid_images if i.analysis.get("ai", {}).get("status") == "ready"]
         ai_component = None
@@ -94,11 +109,17 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
             freshness_map = {"fresh": 95.0, "ripe": 78.0, "overripe": 48.0, "spoiled": 15.0}
             ai_scores = [freshness_map.get(x.get("prediction", "").lower(), 50.0) for x in ai_ready]
             ai_component = sum(ai_scores) / len(ai_scores)
-            vision_score = _clamp(vision_score * 0.58 + ai_component * 0.42)
+            provisional_vision_score = _clamp(provisional_vision_score * 0.58 + ai_component * 0.42)
 
         top_reference = None
         if reference_matches:
             top_reference = max(reference_matches, key=lambda row: float(row.get("similarity") or 0.0))
+
+        # The vision score may be computed for debugging/reference comparison,
+        # but it only becomes eligible for the final verdict after physical
+        # multi-view verification.
+        if validation.get("vision_verified"):
+            vision_score = provisional_vision_score
 
         vision_components = {
             "healthy_surface": round(healthy, 2),
@@ -110,30 +131,38 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
             "ignored_images": max(0, len(images) - len(valid_images)),
             "detected_identity": max(set(identities), key=identities.count) if identities else None,
             "ai_score": round(ai_component, 2) if ai_component is not None else None,
+            "provisional_vision_score": round(provisional_vision_score, 2),
             "public_reference": top_reference,
         }
 
-    available = [x for x in (sensor_score, vision_score) if x is not None]
-    if not available:
-        score = 50.0
-        confidence = 0.10
-    elif sensor_score is not None and vision_score is not None:
+    verdict_ready = bool(validation.get("verdict_ready")) and sensor_score is not None and vision_score is not None
+
+    if verdict_ready:
         score = sensor_score * 0.48 + vision_score * 0.52
         angles = {_view_name(i.angle) for i in valid_images if _view_name(i.angle) in {"front", "back", "left", "right", "top"}}
         coverage = min(1.0, len(angles) / 5.0)
-        confidence = 0.62 + coverage * 0.22
+        confidence = min(0.94, 0.62 + coverage * 0.20 + float(validation.get("confidence") or 0.0) / 100.0 * 0.10)
+        if score >= 82:
+            label, risk = "fresh", "low"
+        elif score >= 62:
+            label, risk = "ripe", "low-medium"
+        elif score >= 38:
+            label, risk = "overripe", "medium-high"
+        else:
+            label, risk = "spoiled-suspected", "high"
     else:
-        score = available[0]
-        confidence = 0.42 if vision_score is None else 0.52
-
-    if score >= 82:
-        label, risk = "fresh", "low"
-    elif score >= 62:
-        label, risk = "ripe", "low-medium"
-    elif score >= 38:
-        label, risk = "overripe", "medium-high"
-    else:
-        label, risk = "spoiled-suspected", "high"
+        # Keep DB compatibility with non-null freshness_score while making the
+        # state semantically explicit. Frontend hides this placeholder value.
+        score = 50.0
+        if validation.get("status") in {"suspected_2d_display", "suspected_flat_reference"}:
+            label, risk = "physical-verification-failed", "unverified"
+        elif validation.get("physical_likely") and sensor_score is None:
+            label, risk = "waiting-for-esp32", "unverified"
+        elif validation.get("status") == "no_fruit":
+            label, risk = "waiting-for-fruit", "unverified"
+        else:
+            label, risk = "collecting-physical-evidence", "unverified"
+        confidence = max(0.05, min(0.55, float(validation.get("confidence") or 0.0) / 100.0 * 0.55))
 
     result = FusionResult(
         sample_id=sample.sample_id,
@@ -143,8 +172,16 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
         label=label,
         confidence=round(confidence * 100, 1),
         risk=risk,
-        explanation="Experimental multimodal score combining recent sensor telemetry, quality-gated multi-angle vision, public reference similarity when indexed, and trained AI probabilities when real model weights are present. Calibrate against labelled FreshFusion data before scientific use.",
-        components={"sensor": sensor_components, "vision": vision_components},
+        explanation=(
+            "Final freshness output is released only after multi-view physical-fruit verification and ESP32 telemetry. "
+            "The physical check is probabilistic because a single phone camera has no true depth sensor. "
+            "Freshness fusion remains experimental and must be calibrated against labelled FreshFusion ground truth before scientific use."
+        ),
+        components={
+            "sensor": sensor_components,
+            "vision": vision_components,
+            "validation": validation,
+        },
     )
     sample.status = label
     db.add(result)
