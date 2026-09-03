@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
 
 from ..config import BASE_DIR
 
@@ -53,19 +52,10 @@ def _load_index():
     return _index_cache
 
 
-def match_reference(analysis: dict, fruit_type: str | None) -> dict:
-    quality = analysis.get("quality", {})
-    if quality.get("fruit_present") is False:
-        return {"status": "no_fruit", "match": None, "similarity": None}
-
+def _candidate_rows(analysis: dict, fruit_type: str | None = None) -> list[tuple[float, str, dict, float]]:
     index = _load_index()
     if not index:
-        return {
-            "status": "index_not_built",
-            "match": None,
-            "similarity": None,
-            "note": "Run ai/sync_public_reference.py once to build the compact reference index from the public freshness dataset.",
-        }
+        return []
 
     fruit = (fruit_type or "").strip().lower()
     query = _vector(analysis)
@@ -82,7 +72,81 @@ def match_reference(analysis: dict, fruit_type: str | None) -> dict:
         distance = math.sqrt(sum(value * value for value in z) / len(z))
         similarity = max(0.0, min(100.0, math.exp(-distance / 2.2) * 100.0))
         candidates.append((similarity, label, row, distance))
+    candidates.sort(reverse=True, key=lambda item: item[0])
+    return candidates
 
+
+def infer_fruit_identity(analysis: dict, supported: tuple[str, ...] = ("Apple", "Banana")) -> dict:
+    """Infer fruit family from the cached public freshness reference index.
+
+    This is a supporting identity signal, not a trained FreshFusion classifier.
+    It is intentionally kept separate from freshness-stage matching.
+    """
+    if analysis.get("quality", {}).get("fruit_present") is False:
+        return {"status": "no_fruit", "fruit": "Unknown", "confidence": 0.0, "scores": {}}
+
+    candidates = _candidate_rows(analysis, "Auto")
+    if not candidates:
+        return {"status": "index_not_built", "fruit": "Unknown", "confidence": 0.0, "scores": {}}
+
+    allowed = {name.lower(): name for name in supported}
+    grouped: dict[str, list[float]] = {name: [] for name in allowed}
+    for similarity, _label, row, _distance in candidates:
+        fruit = str(row.get("fruit") or "").lower()
+        if fruit in grouped:
+            grouped[fruit].append(float(similarity))
+
+    scores = {}
+    for fruit, values in grouped.items():
+        if not values:
+            continue
+        values.sort(reverse=True)
+        # The best published stage should dominate identity, with a small
+        # stabilising contribution from the second-best stage.
+        score = values[0] * 0.82 + (values[1] if len(values) > 1 else values[0]) * 0.18
+        scores[allowed[fruit]] = round(score, 1)
+
+    if not scores:
+        return {"status": "fruit_not_indexed", "fruit": "Unknown", "confidence": 0.0, "scores": {}}
+
+    ordered = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    best_fruit, best_score = ordered[0]
+    second_score = ordered[1][1] if len(ordered) > 1 else 0.0
+    margin = best_score - second_score
+
+    if best_score < 24.0 or margin < 3.0:
+        fruit = "Unknown"
+        confidence = max(0.0, min(58.0, 35.0 + margin * 3.0))
+    else:
+        fruit = best_fruit
+        confidence = max(58.0, min(94.0, 52.0 + margin * 2.3 + max(0.0, best_score - 35.0) * 0.35))
+
+    return {
+        "status": "ready",
+        "fruit": fruit,
+        "confidence": round(confidence, 1),
+        "scores": scores,
+        "margin": round(margin, 1),
+        "method": "cached public-reference fruit-family similarity",
+        "note": "Supporting identity signal from published freshness classes; not FreshFusion model accuracy.",
+    }
+
+
+def match_reference(analysis: dict, fruit_type: str | None) -> dict:
+    quality = analysis.get("quality", {})
+    if quality.get("fruit_present") is False:
+        return {"status": "no_fruit", "match": None, "similarity": None}
+
+    index = _load_index()
+    if not index:
+        return {
+            "status": "index_not_built",
+            "match": None,
+            "similarity": None,
+            "note": "Run ai/sync_public_reference.py once to build the compact reference index from the public freshness dataset.",
+        }
+
+    candidates = _candidate_rows(analysis, fruit_type)
     if not candidates:
         return {
             "status": "fruit_not_indexed",
@@ -91,7 +155,6 @@ def match_reference(analysis: dict, fruit_type: str | None) -> dict:
             "fruit_type": fruit_type,
         }
 
-    candidates.sort(reverse=True, key=lambda item: item[0])
     best = candidates[0]
     top = [
         {
