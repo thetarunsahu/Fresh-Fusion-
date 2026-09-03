@@ -6,42 +6,148 @@ def _clamp(v: float) -> float:
     return max(0.0, min(100.0, v))
 
 
+def _view_name(angle: str) -> str:
+    value = (angle or "unknown").lower()
+    return value[5:] if value.startswith("live-") else value
+
+
+def _usable_images(images: list[FruitImage], sample: FruitSample) -> list[FruitImage]:
+    quality_aware = [row for row in images if row.analysis and "quality" in row.analysis]
+    if quality_aware:
+        valid = [row for row in quality_aware if row.analysis.get("quality", {}).get("fruit_present") is True]
+    else:
+        valid = [row for row in images if row.analysis]
+
+    expected = (sample.fruit_type or "").strip().lower()
+    if expected in {"apple", "banana"}:
+        matched = []
+        for row in valid:
+            identity = (row.analysis or {}).get("identity", {})
+            detected = str(identity.get("fruit") or "").lower()
+            confidence = float(identity.get("confidence") or 0.0)
+            if not detected or detected == "unknown" or confidence < 58.0 or detected == expected:
+                matched.append(row)
+        if matched:
+            valid = matched
+    return valid
+
+
 def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
     sensors = db.query(SensorReading).filter(SensorReading.sample_id == sample.sample_id).order_by(SensorReading.captured_at.desc()).limit(20).all()
     images = db.query(FruitImage).filter(FruitImage.sample_id == sample.sample_id).order_by(FruitImage.uploaded_at.desc()).all()
-    sensor_score = None; sensor_components = {}
+
+    sensor_score = None
+    sensor_components = {}
     if sensors:
         def avg(name, fallback):
             vals = [getattr(x, name) for x in sensors if getattr(x, name) is not None]
             return sum(vals) / len(vals) if vals else fallback
-        temperature=avg("temperature",24.0); humidity=avg("humidity",60.0); voc=avg("voc_index",None); gas_ppm=avg("gas_ppm",0.0)
-        temp_penalty=abs(temperature-24.0)*2.5; humidity_penalty=abs(humidity-60.0)*0.65
-        gas_signal=voc if voc is not None else gas_ppm/10.0; gas_penalty=min(42.0,max(0.0,gas_signal)*0.45)
-        sensor_score=_clamp(100.0-temp_penalty-humidity_penalty-gas_penalty)
-        sensor_components={"temperature_penalty":round(temp_penalty,2),"humidity_penalty":round(humidity_penalty,2),"gas_penalty":round(gas_penalty,2)}
-    vision_score=None; vision_components={}; valid_images=[i for i in images if i.analysis]
+
+        temperature = avg("temperature", 24.0)
+        humidity = avg("humidity", 60.0)
+        voc = avg("voc_index", None)
+        gas_ppm = avg("gas_ppm", 0.0)
+        temp_penalty = abs(temperature - 24.0) * 2.5
+        humidity_penalty = abs(humidity - 60.0) * 0.65
+        gas_signal = voc if voc is not None else gas_ppm / 10.0
+        gas_penalty = min(42.0, max(0.0, gas_signal) * 0.45)
+        sensor_score = _clamp(100.0 - temp_penalty - humidity_penalty - gas_penalty)
+        sensor_components = {
+            "temperature_penalty": round(temp_penalty, 2),
+            "humidity_penalty": round(humidity_penalty, 2),
+            "gas_penalty": round(gas_penalty, 2),
+        }
+
+    vision_score = None
+    vision_components = {}
+    valid_images = _usable_images(images, sample)
     if valid_images:
-        healthy_values=[]; brown_values=[]; dark_values=[]
+        healthy_values = []
+        brown_values = []
+        dark_values = []
+        identities = []
+        reference_matches = []
         for image in valid_images:
-            color=image.analysis.get("color",{}); defects=image.analysis.get("defects",{})
-            healthy_values.append(float(defects.get("healthy_surface_estimate_pct",70.0))); brown_values.append(float(color.get("brown_pct",0.0))); dark_values.append(float(color.get("dark_pct",0.0)))
-        healthy=sum(healthy_values)/len(healthy_values); brown=sum(brown_values)/len(brown_values); dark=sum(dark_values)/len(dark_values)
-        coverage=min(1.0,len({i.angle for i in valid_images})/5.0); vision_score=_clamp(healthy-brown*0.20-dark*0.35)
-        ai_ready=[i.analysis.get("ai",{}) for i in valid_images if i.analysis.get("ai",{}).get("status")=="ready"]
-        ai_component=None
+            analysis = image.analysis or {}
+            color = analysis.get("color", {})
+            defects = analysis.get("defects", {})
+            healthy_values.append(float(defects.get("healthy_surface_estimate_pct", 70.0)))
+            brown_values.append(float(color.get("brown_pct", 0.0)))
+            dark_values.append(float(color.get("dark_pct", 0.0)))
+            identity = analysis.get("identity", {})
+            if identity.get("fruit") and identity.get("fruit") != "Unknown":
+                identities.append(identity.get("fruit"))
+            reference = analysis.get("reference_match", {})
+            if reference.get("status") == "ready":
+                reference_matches.append(reference)
+
+        healthy = sum(healthy_values) / len(healthy_values)
+        brown = sum(brown_values) / len(brown_values)
+        dark = sum(dark_values) / len(dark_values)
+        angles = {_view_name(i.angle) for i in valid_images if _view_name(i.angle) in {"front", "back", "left", "right", "top"}}
+        coverage = min(1.0, len(angles) / 5.0)
+        vision_score = _clamp(healthy - brown * 0.20 - dark * 0.35)
+
+        ai_ready = [i.analysis.get("ai", {}) for i in valid_images if i.analysis.get("ai", {}).get("status") == "ready"]
+        ai_component = None
         if ai_ready:
-            freshness_map={"fresh":95.0,"ripe":78.0,"overripe":48.0,"spoiled":15.0}
-            ai_scores=[freshness_map.get(x.get("prediction","").lower(),50.0) for x in ai_ready]; ai_component=sum(ai_scores)/len(ai_scores)
-            vision_score=_clamp(vision_score*0.58+ai_component*0.42)
-        vision_components={"healthy_surface":round(healthy,2),"brown_pct":round(brown,2),"dark_pct":round(dark,2),"angles":len({i.angle for i in valid_images}),"coverage_pct":round(coverage*100,1),"ai_score":round(ai_component,2) if ai_component is not None else None}
-    available=[x for x in (sensor_score,vision_score) if x is not None]
-    if not available: score=50.0; confidence=0.15
+            freshness_map = {"fresh": 95.0, "ripe": 78.0, "overripe": 48.0, "spoiled": 15.0}
+            ai_scores = [freshness_map.get(x.get("prediction", "").lower(), 50.0) for x in ai_ready]
+            ai_component = sum(ai_scores) / len(ai_scores)
+            vision_score = _clamp(vision_score * 0.58 + ai_component * 0.42)
+
+        top_reference = None
+        if reference_matches:
+            top_reference = max(reference_matches, key=lambda row: float(row.get("similarity") or 0.0))
+
+        vision_components = {
+            "healthy_surface": round(healthy, 2),
+            "brown_pct": round(brown, 2),
+            "dark_pct": round(dark, 2),
+            "angles": len(angles),
+            "coverage_pct": round(coverage * 100, 1),
+            "usable_images": len(valid_images),
+            "ignored_images": max(0, len(images) - len(valid_images)),
+            "detected_identity": max(set(identities), key=identities.count) if identities else None,
+            "ai_score": round(ai_component, 2) if ai_component is not None else None,
+            "public_reference": top_reference,
+        }
+
+    available = [x for x in (sensor_score, vision_score) if x is not None]
+    if not available:
+        score = 50.0
+        confidence = 0.10
     elif sensor_score is not None and vision_score is not None:
-        score=sensor_score*0.48+vision_score*0.52; coverage=min(1.0,len({i.angle for i in valid_images})/5.0) if valid_images else 0.0; confidence=0.68+coverage*0.18
-    else: score=available[0]; confidence=0.52
-    if score>=82: label,risk="fresh","low"
-    elif score>=62: label,risk="ripe","low-medium"
-    elif score>=38: label,risk="overripe","medium-high"
-    else: label,risk="spoiled-suspected","high"
-    result=FusionResult(sample_id=sample.sample_id,freshness_score=round(score,2),sensor_score=round(sensor_score,2) if sensor_score is not None else None,vision_score=round(vision_score,2) if vision_score is not None else None,label=label,confidence=round(confidence*100,1),risk=risk,explanation="Experimental multimodal score combining recent sensor telemetry, multi-angle computer-vision features and trained AI probabilities when real model weights are present. Calibrate against labelled fruit data before scientific use.",components={"sensor":sensor_components,"vision":vision_components})
-    sample.status=label; db.add(result); db.commit(); db.refresh(result); return result
+        score = sensor_score * 0.48 + vision_score * 0.52
+        angles = {_view_name(i.angle) for i in valid_images if _view_name(i.angle) in {"front", "back", "left", "right", "top"}}
+        coverage = min(1.0, len(angles) / 5.0)
+        confidence = 0.62 + coverage * 0.22
+    else:
+        score = available[0]
+        confidence = 0.42 if vision_score is None else 0.52
+
+    if score >= 82:
+        label, risk = "fresh", "low"
+    elif score >= 62:
+        label, risk = "ripe", "low-medium"
+    elif score >= 38:
+        label, risk = "overripe", "medium-high"
+    else:
+        label, risk = "spoiled-suspected", "high"
+
+    result = FusionResult(
+        sample_id=sample.sample_id,
+        freshness_score=round(score, 2),
+        sensor_score=round(sensor_score, 2) if sensor_score is not None else None,
+        vision_score=round(vision_score, 2) if vision_score is not None else None,
+        label=label,
+        confidence=round(confidence * 100, 1),
+        risk=risk,
+        explanation="Experimental multimodal score combining recent sensor telemetry, quality-gated multi-angle vision, public reference similarity when indexed, and trained AI probabilities when real model weights are present. Calibrate against labelled FreshFusion data before scientific use.",
+        components={"sensor": sensor_components, "vision": vision_components},
+    )
+    sample.status = label
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+    return result
