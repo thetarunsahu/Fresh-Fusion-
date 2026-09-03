@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Camera, CheckCircle2, CloudSun, Database, FlaskConical, Gauge, Leaf, RefreshCw, Smartphone, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Camera, CheckCircle2, CloudSun, Database, FlaskConical, Gauge, Leaf, RefreshCw, ShieldCheck, Smartphone, Thermometer, TriangleAlert, Wifi, WifiOff } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { QRCodeSVG } from 'qrcode.react';
 import CameraStream from './components/CameraStream';
-import { API_ROOT, bundle, context, createSample, datasetRegistry, fuse, health, listSamples, pushReading, wsUrl } from './api';
+import { bundle, context, createSample, datasetRegistry, fuse, health, listSamples, pushReading, wsUrl } from './api';
 
 const fmt = (v, d=1) => v == null ? '--' : Number(v).toFixed(d);
 const isPhone = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
@@ -19,6 +19,14 @@ function Metric({icon:Icon,label,value,unit,detail}) {
 
 function EvidenceCard({label,image,empty='Waiting for image'}) {
   return <div className="evidenceCard"><div className="evidenceLabel">{label}</div>{image ? <img src={image} alt={label}/> : <div className="imageEmpty">{empty}</div>}</div>;
+}
+
+function physicalTitle(status){
+  if(status==='physical_fruit_likely') return 'Physical fruit likely';
+  if(status==='suspected_2d_display') return 'Screen / display suspected';
+  if(status==='suspected_flat_reference') return 'Flat image suspected';
+  if(status==='no_fruit') return 'No fruit verified';
+  return 'Collecting physical evidence';
 }
 
 export default function App(){
@@ -41,18 +49,21 @@ export default function App(){
   const analysis=latestImage?.analysis||{};
   const identity=analysis.identity||{};
   const quality=analysis.quality||{};
+  const presentation=analysis.presentation||{};
   const reference=analysis.reference_match||{};
   const color=analysis.color||{};
   const texture=analysis.texture||{};
   const defects=analysis.defects||{};
   const issues=analysis.issues||[];
   const fusion=data.fusion||{};
+  const validation=fusion.components?.validation||{};
   const sensorConnected=Boolean(latest.device_id);
   const phoneConnected=Boolean(latestImage && (Date.now()-new Date(latestImage.uploaded_at).getTime()) < 20000);
   const fruitPresent=quality.fruit_present===true;
   const detectedFruit=identity.fruit && identity.fruit!=='Unknown' ? identity.fruit : null;
   const effectiveFruit=detectedFruit || (sample?.fruit_type && sample.fruit_type!=='Auto' ? sample.fruit_type : null);
-  const score=fruitPresent && fusion.vision_score!=null ? fusion.freshness_score : null;
+  const verdictReady=validation.verdict_ready===true;
+  const score=verdictReady ? fusion.freshness_score : null;
   const chart=useMemo(()=>data.sensors.slice(-80).map((r,i)=>({i,temperature:r.temperature,humidity:r.humidity,gas:r.gas_ppm ?? r.mq135_raw})),[data.sensors]);
   const phoneUrl=healthInfo?.phone_dashboard || window.location.href;
   const colorRows=(effectiveFruit||'').toLowerCase()==='apple'
@@ -109,11 +120,12 @@ export default function App(){
   if(phoneClient){
     return <div className="phoneNodePage">
       <div className="phoneTopbar"><div className="brandLine"><div className="logoMark"><Leaf size={18}/></div><div><b>FreshFusion</b><span>Phone Vision Node</span></div></div><span className={online?'phoneOnline on':'phoneOnline'}>{online?'connected':'offline'}</span></div>
-      <div className="phoneSample"><span>Active sample</span><b>{sample?.fruit_type||'Auto'} · {sample?.sample_id||'connecting...'}</b><small>Keep the fruit centered. Apple/Banana identity is selected automatically from stable camera evidence.</small></div>
+      <div className="phoneSample"><span>Active sample</span><b>{sample?.fruit_type||'Auto'} · {sample?.sample_id||'connecting...'}</b><small>Use the real fruit, not a photo or another screen. FreshFusion needs at least three genuinely different viewpoints before it releases a freshness verdict.</small></div>
       {err&&<div className="errorBox">{err}</div>}
       <CameraStream sampleId={sample?.sample_id} groundTruth={truth} compact autoStart onFrame={()=>refresh()}/>
       <label className="truthSelect"><span>Dataset label (optional)</span><select value={truth} onChange={e=>setTruth(e.target.value)}><option value="">Unlabelled</option><option value="fresh">Fresh</option><option value="ripe">Ripe</option><option value="overripe">Overripe</option><option value="spoiled">Spoiled</option></select></label>
-      <div className="phoneHelp"><CheckCircle2 size={17}/><p>Move around the fruit and switch Front / Back / Left / Right / Top. Images continue sending automatically.</p></div>
+      <div className="phoneHelp"><ShieldCheck size={17}/><p>Physical check: capture Front + Left/Right + Back/Top while moving around the actual fruit. A repeated flat image or obvious display can block the final verdict.</p></div>
+      <div className="phoneHelp"><CheckCircle2 size={17}/><p>Images continue sending automatically as you change the selected view.</p></div>
     </div>;
   }
 
@@ -125,15 +137,28 @@ export default function App(){
 
     <main className="content">
       <section className="contextRow">
-        <div><span className="sectionKicker">ACTIVE ANALYSIS</span><h1>{effectiveFruit||'Detecting fruit'} <small>{sample?.sample_id||'initialising'}</small></h1><p>{fruitPresent?`Camera selected ${effectiveFruit||'the fruit'} from live evidence. Sensor and visual evidence now use that fruit profile.`:'Place one fruit inside the scan guide. Freshness scoring waits until a reliable fruit region is detected.'}</p></div>
+        <div><span className="sectionKicker">ACTIVE ANALYSIS</span><h1>{effectiveFruit||'Detecting fruit'} <small>{sample?.sample_id||'initialising'}</small></h1><p>{verdictReady?`Physical ${effectiveFruit||'fruit'} evidence and ESP32 telemetry are verified for the current multimodal result.`:fruitPresent?`Visual identity is ${effectiveFruit||'detected'}, but FreshFusion is still verifying that the camera is seeing a physical 3D fruit.`:'Place one real fruit inside the scan guide. Freshness scoring stays locked until physical evidence is verified.'}</p></div>
         <div className="statusBar"><Status ok={online} label="Backend" detail={online?'online':'offline'}/><Status ok={sensorConnected} label="ESP32" detail={sensorConnected?latest.device_id:'waiting'}/><Status ok={phoneConnected} label="Phone camera" detail={phoneConnected?'streaming':'waiting'}/></div>
       </section>
 
       {err&&<div className="errorBox">{err}</div>}
 
       <section className="identityStrip panel">
-        <div><span className="sectionKicker">AUTO FRUIT IDENTITY</span><h2>{fruitPresent?(detectedFruit||'Fruit detected'):'No reliable fruit detected'}</h2><p>{fruitPresent?`Identity confidence ${fmt(identity.confidence,0)}%. Current profile: ${effectiveFruit||'unknown'}.`:(quality.message||'Keep a single fruit centered in the phone guide.')}</p></div>
+        <div><span className="sectionKicker">AUTO FRUIT IDENTITY</span><h2>{fruitPresent?(detectedFruit||'Fruit-like object detected'):'No reliable fruit detected'}</h2><p>{fruitPresent?`Visual identity confidence ${fmt(identity.confidence,0)}%. This identifies appearance only; it does not by itself prove the fruit is physically present.`:(quality.message||'Keep a single real fruit centered in the phone guide.')}</p></div>
         <div className="identityMeta"><div><span>Mode</span><b>Automatic</b></div><div><span>Supported now</span><b>Apple · Banana</b></div><div><span>Reference source</span><b>Fruits-360 + freshness data</b></div></div>
+      </section>
+
+      <section className={`validationStrip panel ${validation.status||'collecting_physical_evidence'}`}>
+        <div className="validationLead">
+          <div className="validationIcon">{validation.status==='physical_fruit_likely'?<ShieldCheck size={22}/>:<TriangleAlert size={22}/>}</div>
+          <div><span className="sectionKicker">PHYSICAL FRUIT CHECK</span><h2>{physicalTitle(validation.status)}</h2><p>{validation.message||'Capture at least three changed viewpoints of the real fruit.'}</p></div>
+        </div>
+        <div className="validationMetrics">
+          <div><span>Views verified</span><b>{validation.views_count||0}/3</b><small>{(validation.views||[]).join(' · ')||'waiting'}</small></div>
+          <div><span>Screen/photo suspicion</span><b>{fmt(validation.screen_suspicion_pct,0)}%</b><small>lower is better</small></div>
+          <div><span>Appearance change</span><b>{fmt(validation.appearance_diversity_pct,0)}%</b><small>multi-view diversity</small></div>
+          <div><span>ESP32 evidence</span><b>{sensorConnected?'Present':'Waiting'}</b><small>{verdictReady?'final verdict unlocked':'required for final verdict'}</small></div>
+        </div>
       </section>
 
       <section className="primaryGrid">
@@ -144,11 +169,11 @@ export default function App(){
         </div>
 
         <div className="decisionPanel panel">
-          <div className="panelHead"><div><span>SUMMARY</span><h2>{fruitPresent?'Current condition':'Waiting for fruit'}</h2></div></div>
+          <div className="panelHead"><div><span>SUMMARY</span><h2>{verdictReady?'Current condition':'Verification required'}</h2></div></div>
           <div className="scoreBlock"><strong>{score==null?'--':Math.round(score)}</strong><span>/100 freshness</span></div>
-          <div className="resultLabel">{score==null?'No visual verdict':(fusion.label||'collecting').replaceAll('-', ' ')}</div>
-          <div className="summaryRows"><div><span>Detected fruit</span><b>{detectedFruit||'--'}</b></div><div><span>Identity confidence</span><b>{fmt(identity.confidence,0)}%</b></div><div><span>Fusion confidence</span><b>{score==null?'--':`${fmt(fusion.confidence,0)}%`}</b></div><div><span>Sensor score</span><b>{fmt(fusion.sensor_score,0)}</b></div><div><span>Vision score</span><b>{fruitPresent?fmt(fusion.vision_score,0):'--'}</b></div><div><span>Risk</span><b>{score==null?'--':(fusion.risk||'--')}</b></div></div>
-          <p className="quietNote">Background frames are excluded from vision fusion. Prototype score still requires labelled calibration before scientific claims.</p>
+          <div className="resultLabel">{verdictReady?(fusion.label||'collecting').replaceAll('-', ' '):physicalTitle(validation.status)}</div>
+          <div className="summaryRows"><div><span>Visual identity</span><b>{detectedFruit||'--'}</b></div><div><span>Identity confidence</span><b>{fmt(identity.confidence,0)}%</b></div><div><span>Physical check</span><b>{validation.physical_likely?'passed':'not passed'}</b></div><div><span>Fusion confidence</span><b>{verdictReady?`${fmt(fusion.confidence,0)}%`:'--'}</b></div><div><span>Sensor score</span><b>{fmt(fusion.sensor_score,0)}</b></div><div><span>Vision score</span><b>{fmt(fusion.vision_score,0)}</b></div><div><span>Risk</span><b>{verdictReady?(fusion.risk||'--'):'unverified'}</b></div></div>
+          <p className="quietNote">A fruit photo may still be visually classified and compared with datasets, but it cannot unlock the FreshFusion freshness verdict. Final output requires multi-view physical evidence plus ESP32 telemetry.</p>
         </div>
       </section>
 
@@ -162,18 +187,18 @@ export default function App(){
       <section className="twoCol">
         <div className="panel telemetryPanel"><div className="panelHead"><div><span>SENSOR TREND</span><h2>Recent environment</h2></div><button className="textButton" onClick={simulate}>Send test packet</button></div><div className="chartWrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><CartesianGrid stroke="#e6e9ed" vertical={false}/><XAxis dataKey="i" hide/><YAxis stroke="#7b8490" fontSize={11}/><Tooltip/><Area type="monotone" dataKey="temperature" stroke="#247a57" fill="#247a5714" strokeWidth={2}/><Area type="monotone" dataKey="humidity" stroke="#3b6aa0" fillOpacity={0}/><Area type="monotone" dataKey="gas" stroke="#a56b20" fillOpacity={0}/></AreaChart></ResponsiveContainer></div><div className="legend"><span><i className="g"></i>Temperature</span><span><i className="b"></i>Humidity</span><span><i className="y"></i>Gas</span><small>{data.sensors.length} readings</small></div></div>
 
-        <div className="pairPanel panel"><div className="panelHead"><div><span>PHONE CONNECTION</span><h2>Trusted camera link</h2></div><Smartphone size={20}/></div><div className="pairBody"><div><ol><li>Scan this code from the phone.</li><li>Open the trusted HTTPS link.</li><li>Allow camera once.</li><li>Frames upload automatically; same Wi‑Fi is not required for the phone tunnel.</li></ol><small>{phoneUrl}</small></div><div className="qrBox"><QRCodeSVG value={phoneUrl} size={132} bgColor="#ffffff" fgColor="#17221d"/></div></div></div>
+        <div className="pairPanel panel"><div className="panelHead"><div><span>PHONE CONNECTION</span><h2>Trusted camera link</h2></div><Smartphone size={20}/></div><div className="pairBody"><div><ol><li>Scan this code from the phone.</li><li>Open the trusted HTTPS link.</li><li>Allow camera once.</li><li>Use a real fruit and capture 3+ changed views; a flat screen/photo cannot unlock the final verdict.</li></ol><small>{phoneUrl}</small></div><div className="qrBox"><QRCodeSVG value={phoneUrl} size={132} bgColor="#ffffff" fgColor="#17221d"/></div></div></div>
       </section>
 
       <section className="panel datasetPanel"><div className="panelHead"><div><span>LIVE DATASET REFERENCES</span><h2>{effectiveFruit?`${effectiveFruit} comparison sources`:'Reference sources waiting for fruit identity'}</h2></div><Database size={20}/></div><div className="datasetGrid">
         {(datasetInfo?.datasets||[]).map(ds=><div className="datasetSource" key={ds.id}><div className="datasetSourceHead"><span className={ds.online?'statusDot ok':'statusDot'}></span><div><b>{ds.name}</b><small>{ds.purpose.replaceAll('_',' ')}</small></div></div><p>{ds.note}</p><div className="datasetFacts"><span>{ds.online?'Online now':'Offline/unreachable'}</span><span>{ds.updated_at?`Updated ${new Date(ds.updated_at).toLocaleDateString()}`:'Update unknown'}</span><span>{ds.license}</span></div></div>)}
-        <div className="datasetSource referenceSource"><div className="datasetSourceHead"><span className={datasetInfo?.reference_index?.ready?'statusDot ok':'statusDot'}></span><div><b>Runtime reference index</b><small>{datasetInfo?.reference_index?.ready?'ready for live similarity':'not built yet'}</small></div></div>{reference.status==='ready'?<><div className="referenceResult"><strong>{reference.match}</strong><span>{fmt(reference.similarity,0)}% similarity</span></div><p>Nearest published reference class for the latest usable frame. This remains separate from the FreshFusion final label.</p></>:<p>{datasetInfo?.reference_index?.ready?'Waiting for a usable fruit frame.':'Run python ai/sync_public_reference.py once. It downloads the public labelled freshness dataset and builds a compact local comparison index.'}</p>}<div className="datasetFacts"><span>{datasetInfo?.reference_index?.samples||0} indexed images</span><span>{datasetInfo?.reference_index?.classes||0} classes</span></div></div>
+        <div className="datasetSource referenceSource"><div className="datasetSourceHead"><span className={datasetInfo?.reference_index?.ready?'statusDot ok':'statusDot'}></span><div><b>Runtime reference index</b><small>{datasetInfo?.reference_index?.ready?'ready for live similarity':'not built yet'}</small></div></div>{reference.status==='ready'?<><div className="referenceResult"><strong>{reference.match}</strong><span>{fmt(reference.similarity,0)}% similarity</span></div><p>Nearest published visual reference class. This remains a visual comparison and does not bypass physical-fruit verification.</p></>:<p>{datasetInfo?.reference_index?.ready?'Waiting for a usable fruit-like frame.':'Run python ai/sync_public_reference.py once. It downloads the public labelled freshness dataset and builds a compact local comparison index.'}</p>}<div className="datasetFacts"><span>{datasetInfo?.reference_index?.samples||0} indexed images</span><span>{datasetInfo?.reference_index?.classes||0} classes</span><span>screen suspicion {fmt(presentation.screen_suspicion_pct,0)}%</span></div></div>
       </div><p className="datasetPolicy">{datasetInfo?.runtime_policy}</p></section>
 
-      <section className="panel evidencePanel"><div className="panelHead"><div><span>IMAGE ANALYSIS</span><h2>{fruitPresent?'Evidence from the detected fruit':'Frame quality check'}</h2></div><FlaskConical size={20}/></div><div className="evidenceGrid"><EvidenceCard label="Original" image={latestImage?.url}/><EvidenceCard label="Defect overlay" image={analysis.artifacts?.defect_overlay}/><EvidenceCard label="Texture map" image={analysis.artifacts?.texture}/><EvidenceCard label="Fruit mask" image={analysis.artifacts?.mask}/><EvidenceCard label="Edge map" image={analysis.artifacts?.edges}/></div></section>
+      <section className="panel evidencePanel"><div className="panelHead"><div><span>IMAGE ANALYSIS</span><h2>{validation.physical_likely?'Evidence from the verified physical fruit':fruitPresent?'Provisional visual evidence':'Frame quality check'}</h2></div><FlaskConical size={20}/></div><div className="evidenceGrid"><EvidenceCard label="Original" image={latestImage?.url}/><EvidenceCard label="Defect overlay" image={analysis.artifacts?.defect_overlay}/><EvidenceCard label="Texture map" image={analysis.artifacts?.texture}/><EvidenceCard label="Fruit mask" image={analysis.artifacts?.mask}/><EvidenceCard label="Edge map" image={analysis.artifacts?.edges}/></div></section>
 
       <section className="analysisGrid">
-        <div className="panel"><div className="panelHead"><div><span>OBSERVATIONS</span><h2>What needs attention</h2></div></div><div className="issueList">{!fruitPresent?<div className="noIssues">No fruit-quality observations until a centered fruit is detected.</div>:issues.length?issues.map((issue,i)=><div className={`issue ${issue.severity}`} key={`${issue.label}-${i}`}><div><b>{issue.label}</b><span>{issue.note}</span></div><strong>{fmt(issue.value)}{issue.label.toLowerCase().includes('rough')?'':'%'}</strong></div>):<div className="noIssues">No strong visual warning has been detected in the latest usable frame.</div>}</div></div>
+        <div className="panel"><div className="panelHead"><div><span>OBSERVATIONS</span><h2>What needs attention</h2></div></div><div className="issueList">{!fruitPresent?<div className="noIssues">No fruit-quality observations until a centered fruit-like region is detected.</div>:issues.length?issues.map((issue,i)=><div className={`issue ${issue.severity}`} key={`${issue.label}-${i}`}><div><b>{issue.label}</b><span>{issue.note}</span></div><strong>{fmt(issue.value)}{issue.label.toLowerCase().includes('rough')?'':'%'}</strong></div>):<div className="noIssues">No strong visual warning has been detected in the latest usable frame.</div>}</div>{fruitPresent&&!validation.physical_likely&&<p className="provisionalNote">These are pixel-level observations only. They are not used as a final physical-fruit freshness verdict yet.</p>}</div>
 
         <div className="panel"><div className="panelHead"><div><span>COLOR</span><h2>{effectiveFruit||'Fruit'} surface profile</h2></div></div><div className="barList">{colorRows.map(([name,value])=><div key={name}><div><span>{name}</span><b>{fruitPresent?fmt(value):'--'}%</b></div><progress max="100" value={fruitPresent?(value||0):0}></progress></div>)}</div></div>
 
