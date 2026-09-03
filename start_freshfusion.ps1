@@ -94,7 +94,13 @@ function Ensure-Cloudflared {
 
     Write-Host '[setup] Downloading Cloudflare Tunnel (official binary)...' -ForegroundColor Cyan
     $url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe'
-    Invoke-WebRequest -Uri $url -OutFile $exe
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        & $curl.Source -L --fail --silent --show-error $url -o $exe
+        if ($LASTEXITCODE -ne 0) { throw 'cloudflared download failed with curl.' }
+    } else {
+        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $exe
+    }
     if (-not (Test-Path $exe)) { throw 'cloudflared download failed.' }
     return $exe
 }
