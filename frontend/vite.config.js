@@ -1,17 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react()],
   server: {
     host: '0.0.0.0',
     port: 5173,
-    https: true,
+    strictPort: true,
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: false },
-      '/uploads': { target: 'http://127.0.0.1:8000', changeOrigin: false },
-      '/ws': { target: 'http://127.0.0.1:8000', changeOrigin: false, ws: true },
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/uploads': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/ws': { target: 'ws://127.0.0.1:8000', changeOrigin: true, ws: true },
     },
   },
 });
