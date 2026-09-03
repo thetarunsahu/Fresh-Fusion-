@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from .ai import predict_image
-from .reference_match import match_reference
+from .reference_match import infer_fruit_identity, match_reference
 
 
 def _pct(mask: np.ndarray, region: np.ndarray | None = None) -> float:
@@ -76,7 +76,7 @@ def _shape(mask: np.ndarray) -> dict:
     rect_w, rect_h = cv2.minAreaRect(contour)[1]
     short = max(min(rect_w, rect_h), 1.0)
     long = max(rect_w, rect_h)
-    x, y, bw, bh = cv2.boundingRect(contour)
+    _x, _y, bw, bh = cv2.boundingRect(contour)
     hull = cv2.convexHull(contour)
     hull_area = max(float(cv2.contourArea(hull)), 1.0)
     return {
@@ -84,6 +84,28 @@ def _shape(mask: np.ndarray) -> dict:
         "circularity": round(max(0.0, min(1.0, 4.0 * math.pi * area / (perimeter * perimeter))), 3),
         "solidity": round(max(0.0, min(1.0, area / hull_area)), 3),
         "extent": round(max(0.0, min(1.0, area / max(float(bw * bh), 1.0))), 3),
+    }
+
+
+def _blob_shape(color_mask: np.ndarray, region: np.ndarray) -> dict:
+    selected = cv2.bitwise_and(color_mask, region)
+    contours, _ = cv2.findContours(selected, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return {"coverage_pct": 0.0, "aspect_ratio": 0.0, "circularity": 0.0, "solidity": 0.0}
+    contour = max(contours, key=cv2.contourArea)
+    area = max(float(cv2.contourArea(contour)), 1.0)
+    region_area = max(float(np.count_nonzero(region)), 1.0)
+    perimeter = max(float(cv2.arcLength(contour, True)), 1.0)
+    rw, rh = cv2.minAreaRect(contour)[1]
+    short = max(min(rw, rh), 1.0)
+    long = max(rw, rh)
+    hull = cv2.convexHull(contour)
+    hull_area = max(float(cv2.contourArea(hull)), 1.0)
+    return {
+        "coverage_pct": round(area / region_area * 100.0, 2),
+        "aspect_ratio": round(long / short, 3),
+        "circularity": round(max(0.0, min(1.0, 4.0 * math.pi * area / (perimeter * perimeter))), 3),
+        "solidity": round(max(0.0, min(1.0, area / hull_area)), 3),
     }
 
 
@@ -119,108 +141,185 @@ def _periodicity(profile: np.ndarray) -> float:
     return float(np.max(spectrum) / total)
 
 
-def _presentation_metrics(gray: np.ndarray, edges: np.ndarray, mask: np.ndarray) -> dict:
-    """Heuristics for obvious monitor/photo presentation artifacts.
-
-    These do not prove liveness. They are combined later with multi-view change.
-    """
-    h, w = gray.shape[:2]
-    frame_area = max(float(h * w), 1.0)
-
-    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    largest_quad = 0.0
+def _largest_quad_ratio(binary: np.ndarray, frame_area: float, minimum: float = 0.07) -> float:
+    contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    largest = 0.0
     for contour in contours:
         area = float(cv2.contourArea(contour))
-        if area < frame_area * 0.12:
+        if area < frame_area * minimum:
             continue
         perimeter = cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
         if len(approx) == 4 and cv2.isContourConvex(approx):
-            largest_quad = max(largest_quad, area / frame_area)
+            largest = max(largest, area / frame_area)
+    return largest
 
-    min_len = max(40, int(min(h, w) * 0.18))
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=70, minLineLength=min_len, maxLineGap=12)
+
+def _presentation_metrics(gray: np.ndarray, hsv: np.ndarray, edges: np.ndarray, mask: np.ndarray) -> dict:
+    """Flag obvious monitor/photo presentation artifacts without claiming proof.
+
+    The score intentionally combines independent clues: large rectangular panels,
+    long horizontal/vertical UI lines, bright low-saturation display regions and
+    pixel/moire-like periodicity. Multi-view planar checks run separately.
+    """
+    h, w = gray.shape[:2]
+    frame_area = max(float(h * w), 1.0)
+
+    largest_quad = _largest_quad_ratio(edges, frame_area, 0.07)
+
+    bright_panel = (((gray > 165) & (hsv[:, :, 1] < 72)).astype(np.uint8) * 255)
+    bright_panel = cv2.morphologyEx(bright_panel, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8), iterations=2)
+    bright_quad = _largest_quad_ratio(bright_panel, frame_area, 0.10)
+
+    min_len = max(36, int(min(h, w) * 0.12))
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=52, minLineLength=min_len, maxLineGap=16)
     axis_lines = 0
     long_lines = 0
     if lines is not None:
-        for row in lines[:120]:
-            x1, y1, x2, y2 = row[0]
-            dx, dy = abs(x2 - x1), abs(y2 - y1)
+        array = np.asarray(lines).reshape(-1, 4)
+        for x1, y1, x2, y2 in array[:160]:
+            dx, dy = abs(int(x2) - int(x1)), abs(int(y2) - int(y1))
             length = math.hypot(dx, dy)
             if length < min_len:
                 continue
             long_lines += 1
             angle = abs(math.degrees(math.atan2(dy, max(dx, 1e-6))))
-            if angle <= 8 or angle >= 82:
+            if angle <= 9 or angle >= 81:
                 axis_lines += 1
     axis_ratio = axis_lines / max(long_lines, 1)
-    line_score = min(1.0, axis_lines / 12.0) * (0.55 + 0.45 * axis_ratio)
+    line_score = min(1.0, axis_lines / 10.0) * (0.50 + 0.50 * axis_ratio)
 
     gx = np.abs(np.diff(gray.astype(np.float32), axis=1)).mean(axis=0)
     gy = np.abs(np.diff(gray.astype(np.float32), axis=0)).mean(axis=1)
     periodicity = max(_periodicity(gx), _periodicity(gy))
-    periodic_score = min(1.0, periodicity / 0.16)
+    periodic_score = min(1.0, periodicity / 0.14)
 
-    quad_score = max(0.0, min(1.0, (largest_quad - 0.18) / 0.55))
-    suspicion = max(quad_score * 78.0, quad_score * 55.0 + line_score * 25.0 + periodic_score * 20.0)
+    quad_score = max(0.0, min(1.0, (largest_quad - 0.10) / 0.50))
+    bright_score = max(0.0, min(1.0, (bright_quad - 0.14) / 0.50))
+    suspicion = max(
+        quad_score * 82.0,
+        bright_score * 62.0 + line_score * 27.0,
+        quad_score * 48.0 + line_score * 30.0 + periodic_score * 22.0,
+    )
+
+    # Strong UI/display geometry gets a decisive floor. This catches the common
+    # demo failure where the phone is pointed at a browser image on a laptop.
+    if largest_quad >= 0.12 and axis_lines >= 5:
+        suspicion = max(suspicion, 72.0 + min(18.0, (axis_lines - 5) * 1.5))
+    if bright_quad >= 0.20 and axis_lines >= 6:
+        suspicion = max(suspicion, 70.0)
+    if largest_quad >= 0.34:
+        suspicion = max(suspicion, 82.0)
+    if periodic_score >= 0.48 and axis_lines >= 4:
+        suspicion = max(suspicion, 70.0)
 
     return {
         "screen_suspicion_pct": round(min(100.0, suspicion), 1),
         "largest_quadrilateral_pct": round(largest_quad * 100.0, 1),
+        "bright_panel_quadrilateral_pct": round(bright_quad * 100.0, 1),
         "axis_line_score_pct": round(line_score * 100.0, 1),
+        "axis_line_count": int(axis_lines),
         "periodicity_score_pct": round(periodic_score * 100.0, 1),
         "fruit_fingerprint": _fruit_fingerprint(gray, mask),
-        "method": "large-quadrilateral + straight-line + periodic-display artifact heuristics",
-        "note": "Single-frame screen/photo detection is heuristic. Final physical verification also requires multiple changed viewpoints.",
+        "method": "display geometry + bright panel + straight-line + periodic artifact heuristics",
+        "note": "Single-frame screen/photo detection is heuristic. Final physical verification also uses changed-view planar consistency.",
     }
 
 
-def _detect_identity(shape: dict, color: dict, quality: dict) -> dict:
+def _detect_identity(shape: dict, color: dict, quality: dict, blobs: dict, reference_identity: dict) -> dict:
     if not quality.get("fruit_present"):
         return {
             "fruit": "Unknown",
             "confidence": 0.0,
-            "method": "shape+color controlled-chamber fallback",
+            "method": "visual identity gate",
             "shape": shape,
             "supported": ["Apple", "Banana"],
+            "reference_identity": reference_identity,
+            "blob_cues": blobs,
         }
 
     aspect = float(shape.get("aspect_ratio", 0.0))
     circularity = float(shape.get("circularity", 0.0))
     solidity = float(shape.get("solidity", 0.0))
-    yellow_green = float(color.get("yellow_pct", 0.0)) + float(color.get("green_pct", 0.0))
+    yellow = float(color.get("yellow_pct", 0.0))
+    green = float(color.get("green_pct", 0.0))
     red = float(color.get("red_pct", 0.0))
+    yellow_green = yellow + green
 
-    banana_score = 0.0
-    apple_score = 0.0
-    banana_score += min(1.0, max(0.0, (aspect - 1.25) / 1.05)) * 0.62
-    banana_score += min(1.0, max(0.0, (0.72 - circularity) / 0.35)) * 0.20
-    banana_score += min(1.0, yellow_green / 55.0) * 0.18
-    apple_score += min(1.0, max(0.0, (1.48 - aspect) / 0.58)) * 0.52
-    apple_score += min(1.0, max(0.0, (circularity - 0.48) / 0.42)) * 0.28
-    apple_score += min(1.0, max(red / 45.0, solidity)) * 0.20
+    red_blob = blobs.get("red", {})
+    yg_blob = blobs.get("yellow_green", {})
+    red_blob_cov = float(red_blob.get("coverage_pct", 0.0))
+    red_blob_circ = float(red_blob.get("circularity", 0.0))
+    red_blob_aspect = float(red_blob.get("aspect_ratio", 99.0))
+    yg_blob_cov = float(yg_blob.get("coverage_pct", 0.0))
+    yg_blob_circ = float(yg_blob.get("circularity", 0.0))
+    yg_blob_aspect = float(yg_blob.get("aspect_ratio", 0.0))
 
-    total = banana_score + apple_score
-    if total <= 0.15:
-        fruit, confidence = "Unknown", 0.0
-    elif banana_score >= apple_score:
-        fruit, confidence = "Banana", banana_score / max(total, 1e-6)
+    strong_apple = red_blob_cov >= 13.0 and red_blob_circ >= 0.42 and red_blob_aspect <= 1.70
+    strong_banana = yg_blob_cov >= 18.0 and yg_blob_aspect >= 1.45 and yg_blob_circ <= 0.72 and red_blob_cov < 14.0
+
+    if strong_apple and not strong_banana:
+        confidence = min(96.0, 80.0 + min(10.0, red_blob_cov * 0.18) + min(6.0, red_blob_circ * 6.0))
+        fruit = "Apple"
+        method = "dominant red rounded-blob cue"
+        scores = {"apple": 1.0, "banana": 0.0}
+    elif strong_banana and not strong_apple:
+        confidence = min(96.0, 79.0 + min(11.0, yg_blob_cov * 0.16) + min(6.0, max(0.0, yg_blob_aspect - 1.3) * 5.0))
+        fruit = "Banana"
+        method = "elongated yellow/green-blob cue"
+        scores = {"apple": 0.0, "banana": 1.0}
     else:
-        fruit, confidence = "Apple", apple_score / max(total, 1e-6)
+        banana_score = 0.0
+        apple_score = 0.0
+        banana_score += min(1.0, max(0.0, (aspect - 1.28) / 1.15)) * 0.48
+        banana_score += min(1.0, max(0.0, (0.70 - circularity) / 0.36)) * 0.16
+        banana_score += min(1.0, yellow_green / 52.0) * 0.25
+        banana_score += min(1.0, yg_blob_cov / 35.0) * 0.11
 
-    separation = abs(banana_score - apple_score)
-    confidence = min(0.96, max(0.0, confidence * (0.72 + min(0.28, separation))))
-    if confidence < 0.58:
-        fruit = "Unknown"
+        apple_score += min(1.0, max(0.0, (1.58 - aspect) / 0.72)) * 0.34
+        apple_score += min(1.0, max(0.0, (circularity - 0.42) / 0.46)) * 0.20
+        apple_score += min(1.0, red / 38.0) * 0.28
+        apple_score += min(1.0, red_blob_cov / 28.0) * 0.13
+        apple_score += min(1.0, solidity) * 0.05
+
+        total = banana_score + apple_score
+        if total <= 0.15:
+            fruit, confidence = "Unknown", 0.0
+        elif banana_score >= apple_score:
+            fruit, confidence = "Banana", banana_score / max(total, 1e-6)
+        else:
+            fruit, confidence = "Apple", apple_score / max(total, 1e-6)
+
+        separation = abs(banana_score - apple_score)
+        confidence = min(0.94, max(0.0, confidence * (0.72 + min(0.28, separation)))) * 100.0
+        method = "shape+color+blob controlled-chamber fallback"
+        scores = {"apple": round(apple_score, 3), "banana": round(banana_score, 3)}
+
+        ref_fruit = str(reference_identity.get("fruit") or "Unknown")
+        ref_conf = float(reference_identity.get("confidence") or 0.0)
+        ref_margin = float(reference_identity.get("margin") or 0.0)
+        if ref_fruit in {"Apple", "Banana"}:
+            if ref_fruit == fruit:
+                confidence = min(96.0, max(confidence, confidence * 0.68 + ref_conf * 0.32))
+                method += "+public-reference agreement"
+            elif ref_conf >= 64.0 and ref_margin >= 5.0 and confidence < 80.0:
+                fruit = ref_fruit
+                confidence = min(92.0, ref_conf)
+                method = "public-reference override of ambiguous visual fallback"
+
+        if confidence < 58.0:
+            fruit = "Unknown"
 
     return {
         "fruit": fruit,
-        "confidence": round(confidence * 100.0, 1),
-        "method": "shape+color controlled-chamber fallback",
+        "confidence": round(float(confidence), 1),
+        "method": method,
         "shape": shape,
-        "scores": {"apple": round(apple_score, 3), "banana": round(banana_score, 3)},
+        "scores": scores,
         "supported": ["Apple", "Banana"],
-        "note": "This fallback is designed for Apple/Banana in the centered scan chamber. Replace/augment it with a trained fruit-identity model for broader fruit support.",
+        "blob_cues": blobs,
+        "reference_identity": reference_identity,
+        "note": "Identity combines fruit-shape/color blobs with the cached public reference index. It is still a prototype fallback until the trained identity model is deployed.",
     }
 
 
@@ -257,15 +356,15 @@ def analyze_image(path: Path, fruit_type: str = "Auto") -> dict:
     yellow = cv2.inRange(hsv, np.array([18, 55, 45]), np.array([38, 255, 255]))
     green = cv2.inRange(hsv, np.array([38, 35, 30]), np.array([90, 255, 255]))
     red = cv2.bitwise_or(
-        cv2.inRange(hsv, np.array([0, 55, 40]), np.array([7, 255, 255])),
-        cv2.inRange(hsv, np.array([170, 55, 40]), np.array([179, 255, 255])),
+        cv2.inRange(hsv, np.array([0, 55, 40]), np.array([10, 255, 255])),
+        cv2.inRange(hsv, np.array([168, 55, 40]), np.array([179, 255, 255])),
     )
     brown = cv2.inRange(hsv, np.array([5, 42, 18]), np.array([20, 255, 190]))
     dark = cv2.inRange(gray, 0, 55)
 
     lap = cv2.Laplacian(gray, cv2.CV_64F)
     edges = cv2.Canny(gray, 75, 150)
-    presentation = _presentation_metrics(gray, edges, mask)
+    presentation = _presentation_metrics(gray, hsv, edges, mask)
     masked_gray = gray[mask > 0]
     hist, _ = np.histogram(masked_gray if len(masked_gray) else gray.ravel(), bins=256, range=(0, 256))
     probs = hist / max(hist.sum(), 1)
@@ -297,7 +396,23 @@ def analyze_image(path: Path, fruit_type: str = "Auto") -> dict:
         "status": "usable" if fruit_present else "no_centered_fruit",
         "message": "Fruit-like region detected inside the scan area; physical-object verification still requires multiple viewpoints." if fruit_present else "No reliable centered fruit detected. Keep the fruit inside the phone guide before trusting freshness output.",
     }
-    identity = _detect_identity(shape, color, quality)
+
+    blobs = {
+        "red": _blob_shape(red, mask) if fruit_present else {},
+        "yellow_green": _blob_shape(cv2.bitwise_or(yellow, green), mask) if fruit_present else {},
+    }
+    preliminary = {
+        "quality": quality,
+        "color": color,
+        "texture": {
+            "roughness_index": roughness,
+            "edge_density_pct": edge_density,
+            "entropy": round(entropy, 3) if fruit_present else 0.0,
+        },
+        "identity": {"shape": shape},
+    }
+    reference_identity = infer_fruit_identity(preliminary)
+    identity = _detect_identity(shape, color, quality, blobs, reference_identity)
 
     detected = identity.get("fruit", "Unknown")
     if detected != "Unknown" and float(identity.get("confidence", 0.0)) >= 58.0:
