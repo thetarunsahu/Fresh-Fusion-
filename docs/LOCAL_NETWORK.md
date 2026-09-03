@@ -1,39 +1,63 @@
-# FreshFusion local phone + ESP32 mode
+# FreshFusion phone + ESP32 connection
 
-FreshFusion now treats the laptop as the processing server, the ESP32 as a continuous sensor node, and the phone as a continuous vision node.
+FreshFusion uses the laptop as the processing server, ESP32 as the sensor node, and the phone as a live camera node.
 
-## 1. Backend
+The previous LAN-only approach used a self-signed HTTPS certificate. That can fail on phones because mobile browsers require a trusted secure context for `getUserMedia()`. The recommended prototype workflow now uses a Cloudflare Quick Tunnel for the phone while ESP32 stays on the local network.
 
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --reload
-```
+## Recommended: one command
 
-## 2. HTTPS dashboard
-
-The phone camera API requires a secure context. The Vite development server uses `@vitejs/plugin-basic-ssl` and proxies API/WebSocket/upload traffic to the FastAPI backend.
+From the repository root in PowerShell:
 
 ```powershell
-cd frontend
-npm install
-npm run dev
+Set-ExecutionPolicy -Scope Process Bypass
+.\start_freshfusion.ps1
 ```
 
-Open the HTTPS network URL printed by Vite, for example `https://192.168.1.10:5173`. A development certificate warning may appear. Accept it for local prototype use. On the first visit, the browser asks for camera permission; after permission is granted, supported phones automatically start the rear camera and send JPEG frames every 2.5 seconds by default.
+The launcher automatically:
 
-For a production/demo deployment, use a trusted HTTPS domain rather than a development certificate.
+1. creates/checks the Python virtual environment,
+2. checks frontend packages,
+3. downloads the official portable `cloudflared.exe` if needed,
+4. starts the Vite dashboard on `http://localhost:5173`,
+5. creates a trusted `https://...trycloudflare.com` phone URL,
+6. starts FastAPI with that phone URL configured,
+7. opens the laptop dashboard.
 
-## 3. ESP32
+Keep that PowerShell window open while FreshFusion is running.
 
-In `esp32/freshfusion_node.ino`, set Wi-Fi credentials and the laptop IPv4 address in `API_URL`. The board posts telemetry every few seconds as soon as it boots and joins Wi-Fi. `sample_id` is intentionally omitted; FastAPI automatically attaches incoming telemetry to the newest active fruit sample.
+## Phone workflow
 
-Phone and ESP32 should be able to reach the laptop over the same network.
+The dashboard QR code points to a dedicated `phone.html` page over trusted HTTPS. The phone does not need to be on the same Wi-Fi as the laptop because the HTTPS tunnel is outbound from the laptop.
 
-## 4. Continuous vision storage
+On the phone:
 
-The backend keeps a rolling buffer of live frames (`STREAM_KEEP`, default 24) instead of storing an unlimited camera stream. Each accepted live frame is analysed, fused with recent sensor telemetry, broadcast through WebSocket, and displayed on the dashboard.
+1. scan the dashboard QR,
+2. allow Camera when prompted,
+3. if the browser does not auto-start the camera, tap **Start camera** once,
+4. choose Front / Back / Left / Right / Top while moving around the fruit,
+5. frames are uploaded automatically every 2.5 seconds by default.
+
+The phone page follows the newest active fruit sample on the laptop, so phone images and ESP32 telemetry stay attached to the same sample.
+
+## ESP32 workflow
+
+ESP32 still communicates directly with FastAPI over the local Wi-Fi. The launcher prints the exact endpoint, for example:
+
+```text
+http://192.168.1.10:8000/api/v1/sensors/readings
+```
+
+Set that URL plus Wi-Fi SSID/password in `esp32/freshfusion_node.ino`.
+
+If ESP32 cannot reach the laptop but the phone works, allow Python/FastAPI through Windows Firewall on **Private networks** and confirm the laptop IP with `ipconfig`.
+
+## Why the phone path is separate
+
+The desktop dashboard stays focused on analysis. The phone opens a dedicated camera interface instead of loading the full desktop UI. This improves camera reliability and makes the scan flow clear on a small screen.
+
+## Continuous vision storage
+
+The backend keeps a rolling buffer of live frames instead of storing unlimited video frames. Each accepted frame is analysed, fused with recent sensor telemetry and broadcast through WebSocket.
 
 Environment variables:
 
@@ -42,4 +66,4 @@ STREAM_KEEP=24
 FUSION_KEEP=200
 ```
 
-This keeps the prototype responsive while still preserving enough recent frames for vision trends and debugging.
+Cloudflare Quick Tunnels are suitable for development and demos, not a production SLA. For a final deployed product, use a stable HTTPS domain and hosted backend/object storage.
