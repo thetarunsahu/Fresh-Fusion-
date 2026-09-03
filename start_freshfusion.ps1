@@ -30,6 +30,14 @@ function Test-Port([int]$Port) {
     }
 }
 
+function Get-FreePort([int]$PreferredPort, [int]$MaxAttempts = 50) {
+    for ($offset = 0; $offset -lt $MaxAttempts; $offset++) {
+        $candidate = $PreferredPort + $offset
+        if (-not (Test-Port $candidate)) { return $candidate }
+    }
+    throw "Could not find a free port near $PreferredPort."
+}
+
 function Wait-Port([int]$Port, [string]$Name, [int]$TimeoutSeconds = 50) {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
@@ -110,12 +118,20 @@ try {
     Write-Host 'FreshFusion Phone + ESP32 Launcher' -ForegroundColor Green
     Write-Host '---------------------------------' -ForegroundColor DarkGray
 
-    if (Test-Port $FrontendPort) {
-        throw "Port $FrontendPort is already in use. Close the old FreshFusion frontend first."
+    $requestedFrontendPort = $FrontendPort
+    $requestedBackendPort = $BackendPort
+    $FrontendPort = Get-FreePort $FrontendPort
+    $BackendPort = Get-FreePort $BackendPort
+
+    if ($FrontendPort -ne $requestedFrontendPort) {
+        Write-Host "[ports] $requestedFrontendPort is busy; dashboard will use $FrontendPort instead." -ForegroundColor Yellow
     }
-    if (Test-Port $BackendPort) {
-        throw "Port $BackendPort is already in use. Close the old FreshFusion backend first."
+    if ($BackendPort -ne $requestedBackendPort) {
+        Write-Host "[ports] $requestedBackendPort is busy; backend will use $BackendPort instead." -ForegroundColor Yellow
     }
+
+    $env:FRESHFUSION_FRONTEND_PORT = "$FrontendPort"
+    $env:FRESHFUSION_BACKEND_PORT = "$BackendPort"
 
     $venvPython = Ensure-PythonEnvironment
     Ensure-FrontendEnvironment
@@ -125,7 +141,7 @@ try {
     $frontendErr = Join-Path $RuntimeDir 'frontend.err.log'
     Remove-Item $frontendOut, $frontendErr -Force -ErrorAction SilentlyContinue
 
-    Write-Host '[1/3] Starting dashboard...' -ForegroundColor Cyan
+    Write-Host "[1/3] Starting dashboard on port $FrontendPort..." -ForegroundColor Cyan
     $frontendParams = @{
         FilePath = 'cmd.exe'
         ArgumentList = @('/c', 'npm run dev')
@@ -178,7 +194,7 @@ try {
     $backendErr = Join-Path $RuntimeDir 'backend.err.log'
     Remove-Item $backendOut, $backendErr -Force -ErrorAction SilentlyContinue
 
-    Write-Host '[3/3] Starting FastAPI backend...' -ForegroundColor Cyan
+    Write-Host "[3/3] Starting FastAPI backend on port $BackendPort..." -ForegroundColor Cyan
     $backendParams = @{
         FilePath = $venvPython
         ArgumentList = @('-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', "$BackendPort")
@@ -199,8 +215,9 @@ try {
     Write-Host "Phone camera     : $phoneUrl" -ForegroundColor Yellow
     Write-Host "ESP32 API        : $esp32Url" -ForegroundColor White
     Write-Host ''
-    Write-Host 'Phone does NOT need to be on the same Wi-Fi now.' -ForegroundColor Green
-    Write-Host 'Open the dashboard on the laptop and scan its QR code.' -ForegroundColor White
+    Write-Host 'FreshFusion automatically moved away from any busy ports.' -ForegroundColor Green
+    Write-Host 'Phone does NOT need to be on the same Wi-Fi.' -ForegroundColor Green
+    Write-Host 'Open the laptop dashboard and scan its QR code.' -ForegroundColor White
     Write-Host 'On the phone, allow Camera once. If auto-start is blocked, tap Start camera.' -ForegroundColor White
     Write-Host 'Keep this PowerShell window open while FreshFusion is running.' -ForegroundColor DarkYellow
     Write-Host ''
