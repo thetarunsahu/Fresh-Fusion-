@@ -1,9 +1,11 @@
 import os
 import secrets
 from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy.orm import Session
 from PIL import Image
+from sqlalchemy.orm import Session
+
 from ..config import UPLOAD_DIR
 from ..database import get_db
 from ..models import FruitImage, FruitSample, FusionResult
@@ -15,6 +17,7 @@ router = APIRouter(prefix='/images', tags=['images'])
 ALLOWED = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
 FUSION_KEEP = max(40, int(os.getenv('FUSION_KEEP', '200')))
+AUTO_IDENTITY_CONFIDENCE = float(os.getenv('AUTO_IDENTITY_CONFIDENCE', '72'))
 
 
 def _relative_artifacts(analysis: dict) -> dict:
@@ -47,6 +50,77 @@ def _trim_stream(db: Session, sample_id: str) -> None:
         db.commit()
 
 
+def _identity(analysis: dict) -> tuple[str, float]:
+    identity = analysis.get('identity', {})
+    return str(identity.get('fruit') or 'Unknown'), float(identity.get('confidence') or 0.0)
+
+
+def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> tuple[FruitSample, dict]:
+    candidate, confidence = _identity(analysis)
+    event = {
+        'detected_fruit': candidate,
+        'identity_confidence': confidence,
+        'sample_changed': False,
+        'previous_sample_id': sample.sample_id,
+    }
+    if analysis.get('quality', {}).get('fruit_present') is not True:
+        return sample, event
+    if candidate not in {'Apple', 'Banana'} or confidence < AUTO_IDENTITY_CONFIDENCE:
+        return sample, event
+
+    current = (sample.fruit_type or 'Auto').strip().title()
+    if current in {'Auto', 'Fruit', 'Unknown'}:
+        sample.fruit_type = candidate
+        db.add(sample)
+        db.commit()
+        db.refresh(sample)
+        event['auto_selected'] = True
+        return sample, event
+    if current == candidate:
+        return sample, event
+
+    recent = (db.query(FruitImage)
+        .filter(FruitImage.sample_id == sample.sample_id, FruitImage.angle.like('live-%'))
+        .order_by(FruitImage.uploaded_at.desc())
+        .limit(2).all())
+    stable = []
+    for row in recent:
+        row_analysis = row.analysis or {}
+        row_candidate, row_confidence = _identity(row_analysis)
+        if (
+            row_analysis.get('quality', {}).get('fruit_present') is True
+            and row_candidate == candidate
+            and row_confidence >= max(64.0, AUTO_IDENTITY_CONFIDENCE - 8.0)
+        ):
+            stable.append(row)
+
+    if len(stable) < 2:
+        event['pending_switch'] = True
+        event['candidate_frames'] = len(stable) + 1
+        return sample, event
+
+    prefix = candidate[:3].upper()
+    new_sample = FruitSample(
+        sample_id=f'{prefix}-{secrets.token_hex(3).upper()}',
+        fruit_type=candidate,
+        source='auto-camera-switch',
+        status='collecting',
+    )
+    db.add(new_sample)
+    db.flush()
+    for row in stable:
+        row.sample_id = new_sample.sample_id
+        db.add(row)
+    db.commit()
+    db.refresh(new_sample)
+    event.update({
+        'sample_changed': True,
+        'new_sample_id': new_sample.sample_id,
+        'moved_previous_candidate_frames': len(stable),
+    })
+    return new_sample, event
+
+
 async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str | None, max_bytes: int, db: Session):
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
     if not sample:
@@ -68,6 +142,9 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     except Exception as exc:
         path.unlink(missing_ok=True)
         raise HTTPException(400, f'Image analysis failed: {exc}')
+
+    sample, auto_event = _route_detected_fruit(db, sample, analysis)
+    sample_id = sample.sample_id
 
     record = FruitImage(
         sample_id=sample_id,
@@ -91,10 +168,12 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     payload = {
         'id': record.id,
         'sample_id': sample_id,
+        'fruit_type': sample.fruit_type,
         'angle': angle,
         'ground_truth': record.ground_truth,
         'url': record.url,
         'analysis': analysis,
+        'auto_detection': auto_event,
         'uploaded_at': record.uploaded_at.isoformat(),
         'fusion': {
             'freshness_score': fusion.freshness_score,
@@ -105,7 +184,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
             'risk': fusion.risk,
         },
     }
-    await manager.broadcast(sample_id, {'type':'vision-frame', 'data':payload})
+    await manager.broadcast(sample_id, {'type': 'vision-frame', 'data': payload})
     return payload
 
 
@@ -116,5 +195,5 @@ async def upload_image(sample_id: str = Form(...), angle: str = Form('unknown'),
 
 @router.post('/stream-frame')
 async def stream_frame(sample_id: str = Form(...), view: str = Form('front'), ground_truth: str | None = Form(None), file: UploadFile = File(...), db: Session = Depends(get_db)):
-    safe_view = view.lower() if view.lower() in {'front','back','left','right','top'} else 'front'
+    safe_view = view.lower() if view.lower() in {'front', 'back', 'left', 'right', 'top'} else 'front'
     return await _store(file, sample_id, f'live-{safe_view}', ground_truth, 4 * 1024 * 1024, db)
