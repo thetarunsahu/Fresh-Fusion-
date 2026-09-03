@@ -18,6 +18,7 @@ ALLOWED = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
 FUSION_KEEP = max(40, int(os.getenv('FUSION_KEEP', '200')))
 AUTO_IDENTITY_CONFIDENCE = float(os.getenv('AUTO_IDENTITY_CONFIDENCE', '72'))
+AUTO_SCREEN_BLOCK = float(os.getenv('AUTO_SCREEN_BLOCK', '65'))
 
 
 def _relative_artifacts(analysis: dict) -> dict:
@@ -57,13 +58,18 @@ def _identity(analysis: dict) -> tuple[str, float]:
 
 def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> tuple[FruitSample, dict]:
     candidate, confidence = _identity(analysis)
+    screen_suspicion = float(analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
     event = {
         'detected_fruit': candidate,
         'identity_confidence': confidence,
+        'screen_suspicion_pct': screen_suspicion,
         'sample_changed': False,
         'previous_sample_id': sample.sample_id,
     }
     if analysis.get('quality', {}).get('fruit_present') is not True:
+        return sample, event
+    if screen_suspicion >= AUTO_SCREEN_BLOCK:
+        event['routing_blocked'] = 'suspected_screen_or_photo'
         return sample, event
     if candidate not in {'Apple', 'Banana'} or confidence < AUTO_IDENTITY_CONFIDENCE:
         return sample, event
@@ -87,10 +93,12 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
     for row in recent:
         row_analysis = row.analysis or {}
         row_candidate, row_confidence = _identity(row_analysis)
+        row_screen = float(row_analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
         if (
             row_analysis.get('quality', {}).get('fruit_present') is True
             and row_candidate == candidate
             and row_confidence >= max(64.0, AUTO_IDENTITY_CONFIDENCE - 8.0)
+            and row_screen < AUTO_SCREEN_BLOCK
         ):
             stable.append(row)
 
@@ -165,6 +173,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     if angle.startswith('live-'):
         _trim_stream(db, sample_id)
 
+    validation = (fusion.components or {}).get('validation', {})
     payload = {
         'id': record.id,
         'sample_id': sample_id,
@@ -174,6 +183,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
         'url': record.url,
         'analysis': analysis,
         'auto_detection': auto_event,
+        'physical_validation': validation,
         'uploaded_at': record.uploaded_at.isoformat(),
         'fusion': {
             'freshness_score': fusion.freshness_score,
@@ -182,6 +192,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
             'label': fusion.label,
             'confidence': fusion.confidence,
             'risk': fusion.risk,
+            'verdict_ready': bool(validation.get('verdict_ready')),
         },
     }
     await manager.broadcast(sample_id, {'type': 'vision-frame', 'data': payload})
