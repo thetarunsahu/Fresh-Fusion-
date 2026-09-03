@@ -21,11 +21,11 @@ function PhoneVisionApp() {
       setOnline(true);
       let rows = await listSamples();
       if (!rows.length) {
-        const created = await createSample('Banana');
+        const created = await createSample('Auto');
         rows = [created];
       }
       const active = rows[0];
-      setSample(current => current?.sample_id === active.sample_id ? current : active);
+      setSample(current => current?.sample_id === active.sample_id ? {...current, ...active} : active);
       setError('');
     } catch (e) {
       setOnline(false);
@@ -37,7 +37,7 @@ function PhoneVisionApp() {
 
   useEffect(() => {
     syncActiveSample();
-    const timer = setInterval(syncActiveSample, 3000);
+    const timer = setInterval(syncActiveSample, 2500);
     return () => clearInterval(timer);
   }, []);
 
@@ -55,7 +55,7 @@ function PhoneVisionApp() {
     <div className="phoneSample">
       <span>Active sample</span>
       <b>{sample ? `${sample.fruit_type} · ${sample.sample_id}` : 'Connecting...'}</b>
-      <small>The phone automatically follows the newest sample created on the laptop.</small>
+      <small>Keep the fruit centered. FreshFusion automatically selects Apple or Banana after reliable camera evidence and follows a new sample if the fruit changes.</small>
     </div>
 
     {error && <div className="errorBox"><WifiOff size={15}/> {error}</div>}
@@ -81,7 +81,7 @@ function PhoneVisionApp() {
 
     <div className="phoneHelp">
       <CheckCircle2 size={17}/>
-      <p>Keep the fruit inside the guide. Select Front, Back, Left, Right or Top as you move around the fruit. Frames continue uploading automatically.</p>
+      <p>Select Front, Back, Left, Right or Top as you move around the detected fruit. Frames continue uploading automatically.</p>
     </div>
 
     <div className="phoneHelp">
