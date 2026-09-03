@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CheckCircle2, Leaf, RefreshCw, WifiOff } from 'lucide-react';
+import { CheckCircle2, Leaf, RefreshCw, ShieldCheck, TriangleAlert, WifiOff } from 'lucide-react';
 import CameraStream from './components/CameraStream';
 import { createSample, health, listSamples } from './api';
 import './styles.css';
+import './validation.css';
 
 function PhoneVisionApp() {
   const [online, setOnline] = useState(false);
@@ -11,6 +12,7 @@ function PhoneVisionApp() {
   const [truth, setTruth] = useState('');
   const [error, setError] = useState('');
   const [frames, setFrames] = useState(0);
+  const [validation, setValidation] = useState(null);
   const syncing = useRef(false);
 
   const syncActiveSample = async () => {
@@ -41,21 +43,27 @@ function PhoneVisionApp() {
     return () => clearInterval(timer);
   }, []);
 
+  const onFrame = result => {
+    setFrames(v => v + 1);
+    if (result?.physical_validation) setValidation(result.physical_validation);
+  };
+
+  const verified = validation?.physical_likely === true;
+  const failed = ['suspected_2d_display','suspected_flat_reference'].includes(validation?.status);
+
   return <div className="phoneNodePage">
     <div className="phoneTopbar">
       <div className="brandLine">
         <div className="logoMark"><Leaf size={18}/></div>
         <div><b>FreshFusion</b><span>Phone Vision Node</span></div>
       </div>
-      <span className={online ? 'phoneOnline on' : 'phoneOnline'}>
-        {online ? 'connected' : 'offline'}
-      </span>
+      <span className={online ? 'phoneOnline on' : 'phoneOnline'}>{online ? 'connected' : 'offline'}</span>
     </div>
 
     <div className="phoneSample">
       <span>Active sample</span>
       <b>{sample ? `${sample.fruit_type} · ${sample.sample_id}` : 'Connecting...'}</b>
-      <small>Keep the fruit centered. FreshFusion automatically selects Apple or Banana after reliable camera evidence and follows a new sample if the fruit changes.</small>
+      <small>Scan the real physical fruit. Do not point the camera at a fruit photo, laptop display or another phone screen.</small>
     </div>
 
     {error && <div className="errorBox"><WifiOff size={15}/> {error}</div>}
@@ -65,8 +73,19 @@ function PhoneVisionApp() {
       groundTruth={truth}
       compact
       autoStart
-      onFrame={() => setFrames(v => v + 1)}
+      onFrame={onFrame}
     />
+
+    <div className={`phoneHelp ${failed ? 'physicalWarn' : ''}`}>
+      {verified ? <ShieldCheck size={17}/> : <TriangleAlert size={17}/>} 
+      <p>{validation?.message || 'Physical verification needs at least three genuinely different views. Start with Front, then move around the real fruit and select Left/Right and Back/Top.'}</p>
+    </div>
+
+    {validation && <div className="phoneSample">
+      <span>Physical evidence</span>
+      <b>{verified ? 'Likely physical fruit' : failed ? 'Flat/screen reference suspected' : 'Collecting views'}</b>
+      <small>{validation.views_count || 0}/3 views · screen/photo suspicion {Math.round(validation.screen_suspicion_pct || 0)}% · appearance change {Math.round(validation.appearance_diversity_pct || 0)}%</small>
+    </div>}
 
     <label className="truthSelect">
       <span>Dataset label (optional)</span>
@@ -81,7 +100,7 @@ function PhoneVisionApp() {
 
     <div className="phoneHelp">
       <CheckCircle2 size={17}/>
-      <p>Select Front, Back, Left, Right or Top as you move around the detected fruit. Frames continue uploading automatically.</p>
+      <p>Select Front, Left/Right and Back/Top while physically moving around the fruit. Frames continue uploading automatically.</p>
     </div>
 
     <div className="phoneHelp">
