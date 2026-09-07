@@ -62,3 +62,23 @@ class FusionResult(Base):
     components = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     sample = relationship("FruitSample", back_populates="results")
+
+
+class InspectionControl(Base):
+    """One chamber's explicit capture target. Browsing history never changes it."""
+    __tablename__ = "inspection_control"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), nullable=False)
+
+
+class HumanVerification(Base):
+    """Append-only human observations, separate from public labels and predictions."""
+    __tablename__ = "human_verifications"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
+    action = Column(String(30), nullable=False)
+    ground_truth = Column(String(30), nullable=True)
+    notes = Column(Text, default="")
+    reviewer = Column(String(100), default="")
+    assessment = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)

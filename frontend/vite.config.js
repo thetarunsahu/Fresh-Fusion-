@@ -1,5 +1,6 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 
 const frontendPort = Number(process.env.FRESHFUSION_FRONTEND_PORT || 5173);
 const backendPort = Number(process.env.FRESHFUSION_BACKEND_PORT || 8000);
@@ -8,15 +9,23 @@ const backendWs = `ws://127.0.0.1:${backendPort}`;
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      input: {
+        dashboard: fileURLToPath(new URL("./index.html", import.meta.url)),
+        phone: fileURLToPath(new URL("./phone.html", import.meta.url)),
+      },
+    },
+  },
   server: {
-    host: '0.0.0.0',
+    host: "0.0.0.0",
     port: frontendPort,
     strictPort: true,
-    allowedHosts: ['.trycloudflare.com'],
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
-      '/api': { target: backendHttp, changeOrigin: true },
-      '/uploads': { target: backendHttp, changeOrigin: true },
-      '/ws': { target: backendWs, changeOrigin: true, ws: true },
+      "/api": { target: backendHttp, changeOrigin: true },
+      "/uploads": { target: backendHttp, changeOrigin: true },
+      "/ws": { target: backendWs, changeOrigin: true, ws: true },
     },
   },
 });

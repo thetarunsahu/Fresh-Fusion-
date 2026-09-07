@@ -37,7 +37,7 @@ On the phone:
 4. choose Front / Back / Left / Right / Top while moving around the fruit,
 5. frames are uploaded automatically every 2.5 seconds by default.
 
-The phone page follows the newest active fruit sample on the laptop, so phone images and ESP32 telemetry stay attached to the same sample.
+Each QR link includes the selected sample ID. The phone stays paired to that inspection; if the chamber target changes it pauses and offers explicit re-pairing. New inspections become the capture target; browsing History never changes it. ESP32 packets without a sample ID use this explicit target.
 
 ## ESP32 workflow
 

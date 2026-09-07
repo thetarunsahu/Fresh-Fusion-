@@ -1,3 +1,113 @@
+# Start Here — FreshFusion Software Flow
+
+FreshFusion is an experimental **Fruit Quality Investigation System**. A phone supplies images, an ESP32 supplies chamber readings, and the laptop organizes them into an evidence-backed assessment for human review.
+
+## Frontend quick start
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+Use Node.js 22.12+ (or a newer supported LTS). Open the URL Vite prints. **Overview is useful immediately, even without the backend:** it explains the complete workflow and shows disconnected/unknown states rather than fake data. Live capture, persisted history and analysis require FastAPI.
+
+## Explore the six pages
+
+1. **Overview:** how the system works, supported fruits and current availability.
+2. **Live Inspection:** existing image evidence, QR pairing, camera controls, telemetry, reference matching and gated fusion.
+3. **Investigation:** Vision, Sensor, Reference and Multi-view analysts → deterministic evidence critic → experimental assessment → human verification.
+4. **Evidence:** chronological records derived from real stored evidence, with timestamps and provenance.
+5. **Dataset & Validation:** public source metadata, local index status, human-labelled data counts and model artifact status. Metrics stay **NOT YET VALIDATED**.
+6. **History:** open previous inspections without silently switching the chamber capture target.
+
+```text
+NEW INSPECTION → INTAKE / FRUIT IDENTITY → EVIDENCE COLLECTION
+  Phone Camera + ESP32 Sensors + Cached Public Reference
+                              ↓
+  Vision Analyst | Sensor Analyst | Reference Analyst | Multi-view Analyst
+                              ↓
+  FRESHNESS HYPOTHESIS → EVIDENCE CRITIC → DETERMINISTIC FUSION / CONFIDENCE
+                              ↓
+  HUMAN VERIFICATION → INSPECTION HISTORY / VALIDATION DATA
+```
+
+These analysts are software modules, not LLM agents. Existing optional Ollama explanations remain separate from the deterministic decision. No LLM is needed to inspect a fruit.
+
+## Run the complete system
+
+From the repository root in PowerShell:
+
+```powershell
+.\start_freshfusion.ps1
+```
+
+The existing launcher starts Vite and FastAPI and creates a trusted HTTPS phone tunnel. It requires internet access for that tunnel. Create an inspection, open **Live Inspection**, and scan its QR code. Configure the firmware's Wi-Fi and backend endpoint using the address printed by the launcher. The firmware uses the explicit active inspection when `sample_id` is omitted.
+
+For separate local backend startup (without a phone tunnel):
+
+```powershell
+python -m venv backend/.venv
+.\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000
+```
+
+Run the frontend in a second terminal. Its development proxy forwards `/api`, `/uploads` and `/ws` to port 8000. If changing ports, set `FRESHFUSION_BACKEND_PORT` consistently for Vite and the backend. Localhost can use a laptop webcam; a phone requires the trusted HTTPS link. Ordinary HTTP to a laptop's LAN address does not provide a secure camera context.
+
+Optional reference setup:
+
+```powershell
+.\setup_reference_data.ps1
+```
+
+Reference files, uploads, SQLite databases and model binaries are local runtime data, not committed source. The default database is the repository-root `freshfusion.db`. Backend settings come from process environment variables; merely copying `.env.example` does not load them. The frontend normally needs no `.env`; use `VITE_API_ROOT` only for a separately routed API origin.
+
+## Folder responsibilities and safe contribution areas
+
+| Path | Responsibility |
+| --- | --- |
+| `frontend/src/layout/` | Shared navigation and workspace layout |
+| `frontend/src/features/overview/` | Explain the project flow |
+| `frontend/src/features/inspection/` | Existing live dashboard, preserved as a feature |
+| `frontend/src/features/investigation/` | Analyst/critic panels and human review |
+| `frontend/src/features/evidence/` | **Safe teammate task:** evidence timeline and filters |
+| `frontend/src/features/validation/` | **Safe teammate task:** dataset and validation UI |
+| `frontend/src/features/history/` | **Safe teammate task:** previous-inspection cards |
+| `frontend/src/api.js`, `hooks/`, `shared/` | Central API calls, inspection state and reusable UI |
+| `backend/app/services/investigation_core/` | Adapters over existing evidence, analyst summaries, critic and decision contract |
+| `backend/app/api/` | Existing and additive FastAPI routes |
+| `esp32/`, `ai/` | Firmware, reference setup and experimental training/export tools |
+
+**Coordinate changes to core files:** `CameraStream.jsx`, `useInspection.js`, sensor ingestion, `sensor_assessment.py`, `image_analysis.py`, `physical_validation.py`, and `fusion.py`. Teammates should not need to edit `App.jsx` to add timeline, validation or history features.
+
+## Supported now and scientific limits
+
+- Automatic identity: **Apple and Banana**, using CV/rules/reference features. Broader dataset classes do not imply broader deployed identification.
+- MQ135: **raw 12-bit ADC and relative electrical response**, not calibrated ppm. Raw/4095 participates through an explicitly experimental gas penalty; no calibration constants are claimed.
+- Physical-fruit verification: changed-view/display heuristics, **probabilistic**, not guaranteed depth or liveness.
+- Reference similarity: not probability or model accuracy. Public labels remain distinct from human FreshFusion labels.
+- Trained freshness model: optional; absent artifacts are reported honestly. No model is trained by this setup.
+- Fusion scores, weights and confidence: experimental and require calibration plus independent held-out validation. No food-safety certification.
+- An inconclusive/locked assessment is a valid outcome. Simulator and stale readings cannot unlock a physical verdict.
+
+## Verify changes
+
+```powershell
+.\backend\.venv\Scripts\python.exe -B -m unittest discover -s backend/tests -v
+cd frontend
+npm run build
+npx playwright install chromium
+npm test
+```
+
+The backend checks use a temporary database/uploads; browser tests use contract fixtures and a virtual camera. Real phone/ESP32/chamber testing remains necessary. Production builds include both `index.html` and `phone.html`; deployment still needs routing for `/api`, `/uploads` and `/ws`, which Vite supplies during development.
+
+See [Investigation foundation and team handoff](docs/INVESTIGATION_FOUNDATION.md) for API contracts, additive tables, evidence-age limits, sensor semantics and tomorrow's tasks. See [Phone/network setup](docs/LOCAL_NETWORK.md) and [Physical verification](docs/PHYSICAL_VALIDATION.md) for the prototype's capture requirements.
+
+---
+
+> The original project narrative below includes conceptual examples and roadmap ideas. The **Start Here** section and investigation foundation document describe the current software behavior; illustrative metrics below are not measured FreshFusion results.
+
 <div align="center">
 
 # 🍎 FreshFusion

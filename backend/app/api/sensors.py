@@ -4,6 +4,10 @@ from ..database import get_db
 from ..models import FruitSample, SensorReading
 from ..schemas import SensorIn
 from ..realtime import manager
+from ..services.inspection_control import active_sample
+from ..services.sensor_assessment import serialize_sensor
+from ..services.fusion import compute_fusion
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/sensors", tags=["sensors"])
 
@@ -14,7 +18,7 @@ async def ingest(payload: SensorIn, db: Session = Depends(get_db)):
         if not sample:
             raise HTTPException(404, "Sample not found")
     else:
-        sample = db.query(FruitSample).order_by(FruitSample.created_at.desc()).first()
+        sample = active_sample(db)
         if not sample:
             raise HTTPException(409, "Create a fruit sample before sending ESP32 telemetry")
 
@@ -26,7 +30,8 @@ async def ingest(payload: SensorIn, db: Session = Depends(get_db)):
     clean["extra_metrics"] = {**(clean.get("extra_metrics") or {}), **extra}
     reading = SensorReading(**clean)
     db.add(reading); db.commit(); db.refresh(reading)
-    message = {"type": "sensor", "data": {"id": reading.id, "sample_id": reading.sample_id, "device_id": reading.device_id, "temperature": reading.temperature, "humidity": reading.humidity, "mq135_raw": reading.mq135_raw, "gas_ppm": reading.gas_ppm, "voc_index": reading.voc_index, "rssi": reading.rssi, "captured_at": reading.captured_at.isoformat()}}
+    await run_in_threadpool(compute_fusion, db, sample)
+    message = {"type": "sensor", "data": serialize_sensor(reading)}
     await manager.broadcast(sample.sample_id, message)
     return {"ok": True, **message["data"]}
 
@@ -34,4 +39,4 @@ async def ingest(payload: SensorIn, db: Session = Depends(get_db)):
 def latest(sample_id: str, db: Session = Depends(get_db)):
     row = db.query(SensorReading).filter(SensorReading.sample_id == sample_id).order_by(SensorReading.captured_at.desc()).first()
     if not row: return None
-    return {"id": row.id, "device_id": row.device_id, "temperature": row.temperature, "humidity": row.humidity, "mq135_raw": row.mq135_raw, "gas_ppm": row.gas_ppm, "voc_index": row.voc_index, "rssi": row.rssi, "captured_at": row.captured_at}
+    return serialize_sensor(row)

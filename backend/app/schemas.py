@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Literal
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class SampleCreate(BaseModel):
-    fruit_type: str = "Auto"
+    fruit_type: str = Field(default="Auto", min_length=1, max_length=60, pattern=r"^[A-Za-z][A-Za-z -]*$")
     variety: str | None = None
     source: str | None = None
 
@@ -17,17 +17,37 @@ class SampleOut(BaseModel):
     created_at: datetime
 
 class SensorIn(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
     sample_id: str | None = None
-    device_id: str = "ESP32_01"
-    temperature: float | None = None
-    humidity: float | None = None
-    mq135_raw: float | None = None
-    gas_ppm: float | None = None
-    voc_index: float | None = None
+    device_id: str = Field(default="ESP32_01", min_length=1, max_length=80)
+    source: Literal["hardware", "simulator"] = "hardware"
+    temperature: float = Field(ge=0, le=50)
+    humidity: float = Field(ge=0, le=100)
+    mq135_raw: float = Field(ge=0, le=4095)
+    gas_ppm: float | None = Field(default=None, ge=0)
+    voc_index: float | None = Field(default=None, ge=0)
     rssi: float | None = None
     uptime_ms: float | None = None
     extra_metrics: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def identify_test_data(self):
+        # Source is a declared provenance label, not device authentication.
+        if self.device_id.upper().startswith(("SIM", "TEST")) or self.extra_metrics.get("source") == "simulator":
+            self.source = "simulator"
+        return self
+
+class VerificationIn(BaseModel):
+    action: Literal["accept", "incorrect", "ground_truth"]
+    ground_truth: Literal["fresh", "ripe", "overripe", "spoiled"] | None = None
+    notes: str = Field(default="", max_length=2000)
+    reviewer: str = Field(default="", max_length=100)
+
+    @model_validator(mode="after")
+    def require_label(self):
+        if self.action == "ground_truth" and self.ground_truth is None:
+            raise ValueError("Choose a FreshFusion ground-truth label")
+        return self
 
 class SensorOut(SensorIn):
     model_config = ConfigDict(from_attributes=True)

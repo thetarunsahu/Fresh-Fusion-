@@ -2,47 +2,110 @@ export const API_ROOT = import.meta.env.VITE_API_ROOT || window.location.origin;
 export const API = `${API_ROOT}/api/v1`;
 
 async function json(url, options = {}) {
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
-  return res.status === 204 ? null : res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    if (!res.ok) {
+      const body = await res.text();
+      let detail;
+      try {
+        detail = JSON.parse(body).detail;
+      } catch {
+        /* HTTP text response */
+      }
+      throw new Error(
+        typeof detail === "string"
+          ? detail
+          : `HTTP ${res.status}: ${body.slice(0, 240)}`,
+      );
+    }
+    return res.status === 204 ? null : res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const health = () => json(`${API}/health`);
-export const createSample = (fruit_type = 'Auto') => json(`${API}/samples`, {
-  method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({fruit_type})
-});
-export const listSamples = () => json(`${API}/samples?limit=20`);
-export const bundle = id => json(`${API}/samples/${id}/bundle`);
-export const fuse = id => json(`${API}/samples/${id}/fusion`, {method:'POST'});
-export const pushReading = payload => json(`${API}/sensors/readings`, {
-  method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
-});
-export const datasetRegistry = fruit => json(`${API}/datasets/registry${fruit ? `?fruit_type=${encodeURIComponent(fruit)}` : ''}`);
+export const createSample = (fruit_type = "Auto") =>
+  json(`${API}/samples`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fruit_type }),
+  });
+export const listSamples = () => json(`${API}/samples?limit=200`);
+export const assetUrl = (path) => (path ? new URL(path, API_ROOT).href : null);
+export const bundle = async (id) => {
+  const result = await json(`${API}/samples/${encodeURIComponent(id)}/bundle`);
+  result.images = result.images.map((image) => ({
+    ...image,
+    url: assetUrl(image.url),
+    analysis: {
+      ...image.analysis,
+      artifacts: Object.fromEntries(
+        Object.entries(image.analysis?.artifacts || {}).map(([key, path]) => [
+          key,
+          assetUrl(path),
+        ]),
+      ),
+    },
+  }));
+  return result;
+};
+export const investigation = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/investigation`);
+export const activeSample = () => json(`${API}/samples/active`);
+export const activateSample = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/active`, { method: "PUT" });
+export const validationSummary = () => json(`${API}/datasets/validation`);
+export const verifyAssessment = (id, payload) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/verification`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+export const fuse = (id) =>
+  json(`${API}/samples/${id}/fusion`, { method: "POST" });
+export const pushReading = (payload) =>
+  json(`${API}/sensors/readings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+export const datasetRegistry = (fruit) =>
+  json(
+    `${API}/datasets/registry${fruit ? `?fruit_type=${encodeURIComponent(fruit)}` : ""}`,
+  );
 export const referenceStatus = () => json(`${API}/datasets/reference-status`);
 
 function imageForm(sampleId, angle, truth, file) {
   const fd = new FormData();
-  fd.append('sample_id', sampleId);
-  fd.append('angle', angle);
-  if (truth) fd.append('ground_truth', truth);
-  fd.append('file', file, file.name || `frame-${Date.now()}.jpg`);
+  fd.append("sample_id", sampleId);
+  fd.append("angle", angle);
+  if (truth) fd.append("ground_truth", truth);
+  fd.append("file", file, file.name || `frame-${Date.now()}.jpg`);
   return fd;
 }
 
-export const uploadImage = (sampleId, angle, truth, file) => json(`${API}/images/upload`, {
-  method:'POST', body:imageForm(sampleId, angle, truth, file)
-});
+export const uploadImage = (sampleId, angle, truth, file) =>
+  json(`${API}/images/upload`, {
+    method: "POST",
+    body: imageForm(sampleId, angle, truth, file),
+  });
 
 export const uploadStreamFrame = (sampleId, view, truth, file) => {
   const fd = imageForm(sampleId, `live-${view}`, truth, file);
-  fd.append('view', view);
-  return json(`${API}/images/stream-frame`, {method:'POST', body:fd});
+  fd.append("view", view);
+  return json(`${API}/images/stream-frame`, { method: "POST", body: fd });
 };
 
-export const context = (fruit, lat, lon) => json(`${API}/external/context?fruit_type=${encodeURIComponent(fruit)}${lat != null ? `&lat=${lat}&lon=${lon}` : ''}`);
+export const context = (fruit, lat, lon) =>
+  json(
+    `${API}/external/context?fruit_type=${encodeURIComponent(fruit)}${lat != null ? `&lat=${lat}&lon=${lon}` : ""}`,
+  );
 
-export const wsUrl = id => {
+export const wsUrl = (id) => {
   const base = new URL(API_ROOT, window.location.origin);
-  const protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  const protocol = base.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${base.host}/ws/live/${id}`;
 };

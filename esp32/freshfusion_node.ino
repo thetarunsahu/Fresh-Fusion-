@@ -17,14 +17,14 @@ void connectWiFi() {
   Serial.print("\nESP32 IP: "); Serial.println(WiFi.localIP());
 }
 
-void setup(){ Serial.begin(115200); dht.begin(); connectWiFi(); }
+void setup(){ Serial.begin(115200); dht.begin(); analogReadResolution(12); connectWiFi(); }
 
 void loop(){
   if (WiFi.status() != WL_CONNECTED) connectWiFi();
   float t=dht.readTemperature(); float h=dht.readHumidity(); int raw=analogRead(MQ135_PIN);
   if(!isnan(t) && !isnan(h)){
     HTTPClient http; http.begin(API_URL); http.addHeader("Content-Type","application/json");
-    // sample_id is intentionally omitted. FreshFusion assigns telemetry to the newest active fruit sample.
+    // sample_id is intentionally omitted. FreshFusion assigns telemetry to the explicit active inspection (newest sample only for legacy databases).
     String body = String("{\"device_id\":\"ESP32_01\",\"temperature\":")+String(t,2)+",\"humidity\":"+String(h,2)+",\"mq135_raw\":"+String(raw)+",\"rssi\":"+String(WiFi.RSSI())+",\"uptime_ms\":"+String(millis())+"}";
     int code=http.POST(body); String response=http.getString();
     Serial.printf("HTTP %d | %s | %s\n",code,body.c_str(),response.c_str()); http.end();

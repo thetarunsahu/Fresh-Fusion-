@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import UPLOAD_DIR
 from ..models import FruitImage, FruitSample, SensorReading
+from .sensor_assessment import eligible_sensors, age_seconds
 
 VIEWS = {"front", "back", "left", "right", "top"}
 
@@ -29,16 +30,7 @@ def _hamming_hex(a: str | None, b: str | None) -> int | None:
 
 
 def _recent_sensor_present(sensors: list[SensorReading], max_age_seconds: float = 45.0) -> bool:
-    if not sensors:
-        return False
-    newest = max((row.captured_at for row in sensors if row.captured_at is not None), default=None)
-    if newest is None:
-        return False
-    try:
-        age = (datetime.utcnow() - newest).total_seconds()
-        return -5.0 <= age <= max_age_seconds
-    except Exception:
-        return True
+    return bool(eligible_sensors(sensors))
 
 
 def _artifact_path(value: str | None) -> Path | None:
@@ -58,8 +50,10 @@ def _fruit_crop(row: FruitImage) -> np.ndarray | None:
 
     mask_path = _artifact_path((row.analysis or {}).get("artifacts", {}).get("mask"))
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path else None
-    if mask is None or mask.shape != image.shape:
-        mask = np.ones_like(image, dtype=np.uint8) * 255
+    if mask is None:
+        return None
+    if mask.shape != image.shape:
+        mask = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -152,6 +146,10 @@ def evaluate_physical_evidence(
             .all()
         )
 
+    # Capture windows are operational freshness limits, not biological calibration.
+    images = [row for row in images if -5 <= age_seconds(row.uploaded_at) <= 180]
+    if images and (images[0].analysis or {}).get("quality", {}).get("fruit_present") is not True:
+        images = []  # A current empty scene cannot reuse older positive evidence.
     sensor_present = _recent_sensor_present(sensors)
     expected = (sample.fruit_type or "").strip().lower()
     usable: list[FruitImage] = []
@@ -210,7 +208,7 @@ def evaluate_physical_evidence(
     identity_consistency = 0.0
     if identities:
         majority = max(set(identities), key=identities.count)
-        identity_consistency = identities.count(majority) / len(identities)
+        identity_consistency = identities.count(majority) / max(len(selected), 1)
 
     hashes = [(row.analysis or {}).get("presentation", {}).get("fruit_fingerprint") for row in selected]
     hashes = [value for value in hashes if value]
@@ -255,7 +253,7 @@ def evaluate_physical_evidence(
         confidence = min(96.0, 68.0 + planar_consistency * 0.30)
         message = "Different labelled views are still well explained by a flat planar image. This is consistent with a printed photo or screen image. Scan a real 3D fruit and move around it."
     elif enough_frames and enough_views and identity_stable and (
-        diversity >= 8.0 or (planar_scores and planar_consistency < 50.0) or len(views) >= 4
+        diversity >= 8.0 or (planar_scores and planar_consistency < 50.0)
     ):
         status = "physical_fruit_likely"
         physical_likely = True

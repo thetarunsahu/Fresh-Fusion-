@@ -1,7 +1,11 @@
+import os
 from sqlalchemy.orm import Session
 
 from ..models import FruitImage, FruitSample, FusionResult, SensorReading
 from .physical_validation import evaluate_physical_evidence
+from .sensor_assessment import assess_sensors, age_seconds
+
+RESULT_KEEP = max(40, int(os.getenv("FUSION_KEEP", "200")))
 
 
 def _clamp(v: float) -> float:
@@ -34,7 +38,8 @@ def _usable_images(images: list[FruitImage], sample: FruitSample) -> list[FruitI
     return valid
 
 
-def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
+def evaluate_fusion(db: Session, sample: FruitSample) -> dict:
+    """Read-only evaluation; persistence is confined to compute_fusion."""
     sensors = (
         db.query(SensorReading)
         .filter(SensorReading.sample_id == sample.sample_id)
@@ -49,33 +54,15 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
         .all()
     )
 
-    sensor_score = None
-    sensor_components = {}
-    if sensors:
-        def avg(name, fallback):
-            vals = [getattr(x, name) for x in sensors if getattr(x, name) is not None]
-            return sum(vals) / len(vals) if vals else fallback
-
-        temperature = avg("temperature", 24.0)
-        humidity = avg("humidity", 60.0)
-        voc = avg("voc_index", None)
-        gas_ppm = avg("gas_ppm", 0.0)
-        temp_penalty = abs(temperature - 24.0) * 2.5
-        humidity_penalty = abs(humidity - 60.0) * 0.65
-        gas_signal = voc if voc is not None else gas_ppm / 10.0
-        gas_penalty = min(42.0, max(0.0, gas_signal) * 0.45)
-        sensor_score = _clamp(100.0 - temp_penalty - humidity_penalty - gas_penalty)
-        sensor_components = {
-            "temperature_penalty": round(temp_penalty, 2),
-            "humidity_penalty": round(humidity_penalty, 2),
-            "gas_penalty": round(gas_penalty, 2),
-        }
+    sensor_evidence = assess_sensors(sensors)
+    sensor_score = sensor_evidence["score"]
+    sensor_components = sensor_evidence["components"]
 
     validation = evaluate_physical_evidence(db, sample, images=images, sensors=sensors)
 
     vision_score = None
     vision_components = {}
-    valid_images = _usable_images(images, sample)
+    valid_images = _usable_images([i for i in images if -5 <= age_seconds(i.uploaded_at) <= 180], sample)
     if valid_images:
         healthy_values = []
         brown_values = []
@@ -135,7 +122,12 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
             "public_reference": top_reference,
         }
 
-    verdict_ready = bool(validation.get("verdict_ready")) and sensor_score is not None and vision_score is not None
+    from .investigation_core.critic import evaluate_critic
+    from .datasets import reference_index_status
+    latest_analysis = (images[0].analysis or {}) if images else {}
+    critic = evaluate_critic(latest_analysis, validation, sensor_evidence, vision_score, reference_index_status()["ready"], sample.fruit_type)
+    verdict_ready = bool(validation.get("verdict_ready")) and sensor_score is not None and vision_score is not None and not critic["blocking"]
+    validation["verdict_ready"] = verdict_ready
 
     if verdict_ready:
         score = sensor_score * 0.48 + vision_score * 0.52
@@ -156,6 +148,8 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
         score = 50.0
         if validation.get("status") in {"suspected_2d_display", "suspected_flat_reference"}:
             label, risk = "physical-verification-failed", "unverified"
+        elif critic["contradictions"]:
+            label, risk = "conflicting-evidence", "unverified"
         elif validation.get("physical_likely") and sensor_score is None:
             label, risk = "waiting-for-esp32", "unverified"
         elif validation.get("status") == "no_fruit":
@@ -164,8 +158,7 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
             label, risk = "collecting-physical-evidence", "unverified"
         confidence = max(0.05, min(0.55, float(validation.get("confidence") or 0.0) / 100.0 * 0.55))
 
-    result = FusionResult(
-        sample_id=sample.sample_id,
+    return dict(
         freshness_score=round(score, 2),
         sensor_score=round(sensor_score, 2) if sensor_score is not None else None,
         vision_score=round(vision_score, 2) if vision_score is not None else None,
@@ -181,10 +174,23 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
             "sensor": sensor_components,
             "vision": vision_components,
             "validation": validation,
+            "critic": critic,
         },
     )
-    sample.status = label
+
+
+def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
+    assessment = evaluate_fusion(db, sample)
+    result = FusionResult(sample_id=sample.sample_id, **assessment)
+    sample.status = result.label
     db.add(result)
+    db.flush()
+    # Sensor-only updates must obey the same result retention as camera updates.
+    stale = db.query(FusionResult).filter_by(sample_id=sample.sample_id).order_by(
+        FusionResult.created_at.desc(), FusionResult.id.desc()
+    ).offset(RESULT_KEEP).all()
+    for row in stale:
+        db.delete(row)
     db.commit()
     db.refresh(result)
     return result

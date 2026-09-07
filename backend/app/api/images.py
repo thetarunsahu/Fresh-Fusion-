@@ -5,18 +5,20 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from PIL import Image
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from ..config import UPLOAD_DIR
 from ..database import get_db
-from ..models import FruitImage, FruitSample, FusionResult
+from ..models import FruitImage, FruitSample, HumanVerification
 from ..realtime import manager
 from ..services.fusion import compute_fusion
 from ..services.image_analysis import analyze_image
+from ..services.inspection_control import active_sample, set_active
+from ..services.sensor_assessment import utc_iso
 
 router = APIRouter(prefix='/images', tags=['images'])
 ALLOWED = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
-FUSION_KEEP = max(40, int(os.getenv('FUSION_KEEP', '200')))
 AUTO_IDENTITY_CONFIDENCE = float(os.getenv('AUTO_IDENTITY_CONFIDENCE', '72'))
 AUTO_SCREEN_BLOCK = float(os.getenv('AUTO_SCREEN_BLOCK', '65'))
 
@@ -35,19 +37,16 @@ def _delete_image_files(record: FruitImage) -> None:
 
 def _trim_stream(db: Session, sample_id: str) -> None:
     stale = (db.query(FruitImage)
-        .filter(FruitImage.sample_id == sample_id, FruitImage.angle.like('live-%'))
+        .filter(FruitImage.sample_id == sample_id, FruitImage.angle.like('live-%'), FruitImage.ground_truth.is_(None))
         .order_by(FruitImage.uploaded_at.desc())
         .offset(STREAM_KEEP).all())
+    protected = {(review.assessment or {}).get('evidence_image_id') for review in db.query(HumanVerification).filter_by(sample_id=sample_id)}
     for row in stale:
+        if row.id in protected:
+            continue
         _delete_image_files(row)
         db.delete(row)
-    old_results = (db.query(FusionResult)
-        .filter(FusionResult.sample_id == sample_id)
-        .order_by(FusionResult.created_at.desc())
-        .offset(FUSION_KEEP).all())
-    for row in old_results:
-        db.delete(row)
-    if stale or old_results:
+    if stale:
         db.commit()
 
 
@@ -133,9 +132,16 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
     if not sample:
         raise HTTPException(404, 'Sample not found')
+    if angle not in {'unknown', 'front', 'back', 'left', 'right', 'top', 'live-front', 'live-back', 'live-left', 'live-right', 'live-top'}:
+        raise HTTPException(422, 'Unsupported camera view')
+    if ground_truth and ground_truth not in {'fresh', 'ripe', 'overripe', 'spoiled'}:
+        raise HTTPException(422, 'Unsupported FreshFusion ground-truth label')
+    capture_target = active_sample(db)
+    if angle.startswith('live-') and capture_target and capture_target.sample_id != sample_id:
+        raise HTTPException(409, 'Capture target changed. Select the active inspection on the phone or reopen its QR link.')
     if file.content_type not in ALLOWED:
         raise HTTPException(415, 'Only JPEG, PNG and WEBP images are supported')
-    raw = await file.read()
+    raw = await file.read(max_bytes + 1)
     if len(raw) > max_bytes:
         raise HTTPException(413, f'Image must be under {max_bytes // (1024*1024)} MB')
 
@@ -146,13 +152,17 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     try:
         with Image.open(path) as im:
             width, height = im.size
-        analysis = _relative_artifacts(analyze_image(path, sample.fruit_type))
+        analysis = _relative_artifacts(await run_in_threadpool(analyze_image, path, sample.fruit_type))
     except Exception as exc:
         path.unlink(missing_ok=True)
         raise HTTPException(400, f'Image analysis failed: {exc}')
 
     sample, auto_event = _route_detected_fruit(db, sample, analysis)
     sample_id = sample.sample_id
+    if auto_event.get('sample_changed'):
+        current_target = active_sample(db)
+        if current_target and current_target.sample_id == auto_event['previous_sample_id']:
+            set_active(db, sample)
 
     record = FruitImage(
         sample_id=sample_id,
@@ -169,7 +179,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     db.commit()
     db.refresh(record)
 
-    fusion = compute_fusion(db, sample)
+    fusion = await run_in_threadpool(compute_fusion, db, sample)
     if angle.startswith('live-'):
         _trim_stream(db, sample_id)
 
@@ -184,7 +194,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
         'analysis': analysis,
         'auto_detection': auto_event,
         'physical_validation': validation,
-        'uploaded_at': record.uploaded_at.isoformat(),
+        'uploaded_at': utc_iso(record.uploaded_at),
         'fusion': {
             'freshness_score': fusion.freshness_score,
             'sensor_score': fusion.sensor_score,
@@ -196,6 +206,8 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
         },
     }
     await manager.broadcast(sample_id, {'type': 'vision-frame', 'data': payload})
+    if auto_event.get('sample_changed'):
+        await manager.broadcast(auto_event['previous_sample_id'], {'type': 'vision-frame', 'data': payload})
     return payload
 
 

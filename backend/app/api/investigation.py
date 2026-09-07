@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import FruitSample
-from ..services.investigation import build_investigation_summary
+from ..services.investigation_core.investigation import investigate as build_investigation_summary
 from ..services.ollama_client import ollama_client
 
 router = APIRouter(tags=["investigation"])
