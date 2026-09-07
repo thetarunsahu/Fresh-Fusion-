@@ -69,6 +69,6 @@ Write-Host "Model      : $Model" -ForegroundColor White
 Write-Host "Gemma test : $($response.response)" -ForegroundColor White
 Write-Host ""
 Write-Host "FreshFusion backend already defaults to this Ollama URL and model." -ForegroundColor Green
-Write-Host "After starting FreshFusion, verify:" -ForegroundColor White
-Write-Host "  http://localhost:8000/api/v1/ai/ollama/health" -ForegroundColor Cyan
+Write-Host "After running start_freshfusion.ps1, open the backend port printed by the launcher:" -ForegroundColor White
+Write-Host "  http://localhost:<BACKEND_PORT>/api/v1/ai/ollama/health" -ForegroundColor Cyan
 Write-Host ""
