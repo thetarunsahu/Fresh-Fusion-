@@ -3,7 +3,7 @@ import socket
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .api import datasets, external, images, samples, sensors
+from .api import datasets, external, images, investigation, samples, sensors
 from .config import CORS_ORIGINS, UPLOAD_DIR
 from .database import Base, engine
 from .realtime import manager
@@ -27,6 +27,7 @@ app.include_router(sensors.router, prefix="/api/v1")
 app.include_router(images.router, prefix="/api/v1")
 app.include_router(external.router, prefix="/api/v1")
 app.include_router(datasets.router, prefix="/api/v1")
+app.include_router(investigation.router, prefix="/api/v1")
 
 
 def _lan_ip() -> str:
