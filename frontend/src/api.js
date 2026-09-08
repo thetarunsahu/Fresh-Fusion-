@@ -27,6 +27,7 @@ async function json(url, options = {}) {
 }
 
 export const health = () => json(`${API}/health`);
+export const ollamaHealth = () => json(`${API}/ai/ollama/health`);
 export const createSample = (fruit_type = "Auto") =>
   json(`${API}/samples`, {
     method: "POST",
@@ -54,10 +55,29 @@ export const bundle = async (id) => {
 };
 export const investigation = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/investigation`);
+export const explainInvestigation = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain`, {
+    method: "POST",
+  });
+export const saveInvestigationSnapshot = (id, trigger = "manual") =>
+  json(
+    `${API}/samples/${encodeURIComponent(id)}/investigation/snapshot?trigger=${encodeURIComponent(trigger)}`,
+    { method: "POST" },
+  );
+export const investigationSnapshots = (id, limit = 20) =>
+  json(
+    `${API}/samples/${encodeURIComponent(id)}/investigation/snapshots?limit=${limit}`,
+  );
 export const activeSample = () => json(`${API}/samples/active`);
 export const activateSample = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/active`, { method: "PUT" });
 export const validationSummary = () => json(`${API}/datasets/validation`);
+export const createValidationRun = (name = "manual") =>
+  json(`${API}/datasets/validation-runs?name=${encodeURIComponent(name)}`, {
+    method: "POST",
+  });
+export const validationRuns = (limit = 20) =>
+  json(`${API}/datasets/validation-runs?limit=${limit}`);
 export const verifyAssessment = (id, payload) =>
   json(`${API}/samples/${encodeURIComponent(id)}/verification`, {
     method: "POST",
