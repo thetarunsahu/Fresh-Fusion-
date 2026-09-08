@@ -1,6 +1,7 @@
 import { Panel, Facts, StatusChip } from "../../shared/Panel";
 import { fmt, titleCase } from "../../shared/format";
 import HumanVerification from "./HumanVerification";
+import GemmaExplanation from "./GemmaExplanation";
 
 export default function Investigation({ session }) {
   const report = session.report;
@@ -12,17 +13,25 @@ export default function Investigation({ session }) {
   } = report?.analysts || {};
   const reading = sensor.latest || {};
   const match = reference.match || {};
+  const agreement = report?.agreement;
   const critic = report?.critic;
   const decision = report?.decision;
+  const agreementTone =
+    agreement?.status === "ALIGNED"
+      ? "good"
+      : agreement?.status === "CONFLICTING"
+        ? "warning"
+        : "neutral";
+
   return (
     <div className="featurePage">
       <div className="pageIntro">
         <span className="eyebrow">INVESTIGATION</span>
-        <h1>Four perspectives. One evidence check.</h1>
+        <h1>Independent evidence, challenged before release.</h1>
         <p>
-          Each analyst summarizes existing measurements. The critic challenges
-          missing or contradictory evidence before fusion releases an
-          experimental assessment.
+          Vision and sensors carry freshness signals. Reference data provides
+          context, multi-view analysis gates physical evidence, and the critic
+          blocks unsupported conclusions before deterministic fusion.
         </p>
       </div>
       {!report && (
@@ -150,6 +159,39 @@ export default function Investigation({ session }) {
           </p>
         </Panel>
       </div>
+
+      <Panel title="Evidence agreement" eyebrow="CROSS-MODAL CONSISTENCY">
+        <div className="agreementHeader">
+          <div>
+            <StatusChip tone={agreementTone}>
+              {agreement?.status || "INSUFFICIENT"}
+            </StatusChip>
+            <p>
+              {agreement?.summary ||
+                "Collect vision and hardware sensor evidence to compare freshness-bearing signals."}
+            </p>
+          </div>
+          <div className="agreementCount">
+            <strong>{agreement?.counted_sources ?? 0}</strong>
+            <span>freshness signals compared</span>
+          </div>
+        </div>
+        <div className="agreementGrid">
+          {(agreement?.matrix || []).map((item) => (
+            <div className="agreementCard" key={item.source}>
+              <span className="eyebrow">{item.role}</span>
+              <h3>{item.source}</h3>
+              <strong>{item.signal ? titleCase(item.signal) : "Not available"}</strong>
+              <p>{item.detail}</p>
+            </div>
+          ))}
+        </div>
+        <p className="footnote">
+          {agreement?.note ||
+            "Reference and multi-view evidence are not treated as equivalent freshness votes."}
+        </p>
+      </Panel>
+
       <Panel title="Evidence critic" eyebrow="DETERMINISTIC CHECKS">
         <StatusChip tone={critic?.blocking ? "warning" : "neutral"}>
           {critic?.status || "NEEDS MORE DATA"}
@@ -213,6 +255,9 @@ export default function Investigation({ session }) {
           </p>
         )}
       </Panel>
+
+      <GemmaExplanation sampleId={session.sample?.sample_id} />
+
       <HumanVerification
         key={session.sample?.sample_id || "none"}
         sampleId={session.sample?.sample_id}
