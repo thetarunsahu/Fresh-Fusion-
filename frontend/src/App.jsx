@@ -107,7 +107,7 @@ export default function App() {
   );
   return (
     <WorkspaceLayout page={page} navigate={navigate} toolbar={toolbar}>
-      {!session.online && (
+      {session.connectionChecked && !session.online && (
         <div role="status" className="systemBanner offlineBanner">
           <WifiOff size={18} />
           <div>
