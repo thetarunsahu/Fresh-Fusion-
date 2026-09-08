@@ -1,7 +1,27 @@
+import {
+  Activity,
+  Database,
+  Eye,
+  Layers3,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { Panel, Facts, StatusChip } from "../../shared/Panel";
 import { fmt, titleCase } from "../../shared/format";
 import HumanVerification from "./HumanVerification";
 import GemmaExplanation from "./GemmaExplanation";
+
+function AnalystLead({ Icon, title, note }) {
+  return (
+    <div className="analystLead">
+      <span className="analystLeadIcon"><Icon size={18} /></span>
+      <div>
+        <b>{title}</b>
+        <small>{note}</small>
+      </div>
+    </div>
+  );
+}
 
 export default function Investigation({ session }) {
   const report = session.report;
@@ -24,152 +44,114 @@ export default function Investigation({ session }) {
         : "neutral";
 
   return (
-    <div className="featurePage">
-      <div className="pageIntro">
-        <span className="eyebrow">INVESTIGATION</span>
-        <h1>Independent evidence, challenged before release.</h1>
-        <p>
-          Vision and sensors carry freshness signals. Reference data provides
-          context, multi-view analysis gates physical evidence, and the critic
-          blocks unsupported conclusions before deterministic fusion.
-        </p>
+    <div className="featurePage investigationPage">
+      <div className="pageIntro investigationIntro">
+        <div className="investigationIntroCopy">
+          <div className="heroKicker">
+            <Sparkles size={15} />
+            <span>Cross-modal investigation engine</span>
+          </div>
+          <span className="eyebrow">INVESTIGATION</span>
+          <h1>Independent evidence, challenged before release.</h1>
+          <p>
+            Vision and sensors carry freshness signals. Reference evidence adds
+            context, multi-view analysis verifies physical consistency, and the
+            critic blocks unsupported conclusions before deterministic fusion.
+          </p>
+        </div>
+        <div className="investigationStateCard">
+          <span className="eyebrow">CURRENT STATE</span>
+          <strong>{decision?.status || "Awaiting evidence"}</strong>
+          <div className="chipRow">
+            <StatusChip tone={decision?.verdict_ready ? "good" : "warning"}>
+              {decision?.verdict_ready ? "ASSESSMENT AVAILABLE" : "GATED"}
+            </StatusChip>
+            <StatusChip>{agreement?.status || "NO AGREEMENT YET"}</StatusChip>
+          </div>
+        </div>
       </div>
+
       {!report && (
-        <div className="notice">
+        <div className="notice premiumNotice">
           {session.sample
             ? "Waiting for the investigation response."
             : "Create or select an inspection to collect evidence. Analyst fields stay empty until measurements exist."}
         </div>
       )}
-      <div className="analystGrid">
-        <Panel title="Vision Analyst" eyebrow="OPENCV / HEURISTICS">
+
+      <div className="analystGrid premiumAnalystGrid">
+        <Panel title="Vision Analyst" eyebrow="OPENCV / HEURISTICS" className="analystPanel visionAnalystPanel">
+          <AnalystLead Icon={Eye} title="Visual condition" note="Identity, visible surface condition and image quality" />
           <Facts
             items={[
               ["Detected fruit", vision.identity?.fruit],
-              [
-                "Identity confidence (heuristic)",
-                vision.identity?.confidence == null
-                  ? "Not available"
-                  : `${fmt(vision.identity.confidence)}%`,
-              ],
+              ["Identity confidence (heuristic)", vision.identity?.confidence == null ? "Not available" : `${fmt(vision.identity.confidence)}%`],
               ["Usable recent images", vision.usable_images],
-              [
-                "Healthy surface estimate",
-                vision.healthy_surface_estimate_pct == null
-                  ? "Not available"
-                  : `${fmt(vision.healthy_surface_estimate_pct)}%`,
-              ],
-              [
-                "Visible damage estimate",
-                vision.defects?.visible_damage_estimate_pct == null
-                  ? "Not available"
-                  : `${fmt(vision.defects.visible_damage_estimate_pct)}%`,
-              ],
+              ["Healthy surface estimate", vision.healthy_surface_estimate_pct == null ? "Not available" : `${fmt(vision.healthy_surface_estimate_pct)}%`],
+              ["Visible damage estimate", vision.defects?.visible_damage_estimate_pct == null ? "Not available" : `${fmt(vision.defects.visible_damage_estimate_pct)}%`],
               ["Trained freshness inference", titleCase(vision.ai?.status)],
             ]}
           />
           <ul className="findingList">
             {vision.warnings?.map((x, i) => (
-              <li key={i}>
-                <b>{x.label}:</b> {x.note}
-              </li>
+              <li key={i}><b>{x.label}:</b> {x.note}</li>
             ))}
           </ul>
-          <p className="footnote">
-            Surface estimates can be affected by lighting, shadows and
-            background.
-          </p>
+          <p className="footnote">Surface estimates can be affected by lighting, shadows and background.</p>
         </Panel>
-        <Panel title="Sensor Analyst" eyebrow="DETERMINISTIC">
+
+        <Panel title="Sensor Analyst" eyebrow="DETERMINISTIC" className="analystPanel sensorAnalystPanel">
+          <AnalystLead Icon={Activity} title="Chamber telemetry" note="Physical hardware evidence and recency checks" />
           <Facts
             items={[
               ["Temperature", `${fmt(reading.temperature)} °C`],
               ["Humidity", `${fmt(reading.humidity)}% RH`],
               ["MQ135 raw", `${fmt(reading.mq135_raw, 0)} ADC`],
-              [
-                "Relative response (raw / 4095)",
-                fmt(reading.relative_gas_response, 4),
-              ],
+              ["Relative response (raw / 4095)", fmt(reading.relative_gas_response, 4)],
               ["Latest declared source", reading.source],
-              [
-                "Reading age",
-                sensor.age_seconds == null
-                  ? "Not available"
-                  : `${fmt(sensor.age_seconds, 0)} seconds`,
-              ],
+              ["Reading age", sensor.age_seconds == null ? "Not available" : `${fmt(sensor.age_seconds, 0)} seconds`],
               ["Eligible hardware readings", sensor.eligible_readings],
             ]}
           />
-          <p className="footnote">
-            {sensor.note ||
-              "Uncalibrated 12-bit electrical response, not ppm. Simulator data cannot unlock the verdict. Source labels are not device authentication."}
-          </p>
+          <p className="footnote">{sensor.note || "Uncalibrated 12-bit electrical response, not ppm. Simulator data cannot unlock the verdict. Source labels are not device authentication."}</p>
         </Panel>
-        <Panel title="Reference Analyst" eyebrow="LOCAL PUBLIC REFERENCE INDEX">
+
+        <Panel title="Reference Analyst" eyebrow="LOCAL PUBLIC REFERENCE INDEX" className="analystPanel referenceAnalystPanel">
+          <AnalystLead Icon={Database} title="Published context" note="Nearest reference examples without claiming probability" />
           <Facts
             items={[
               ["Dataset", match.source?.name || reference.index?.source?.name],
               ["Nearest published class", match.match],
-              [
-                "Reference similarity",
-                match.similarity == null
-                  ? "Not available"
-                  : `${fmt(match.similarity)}%`,
-              ],
+              ["Reference similarity", match.similarity == null ? "Not available" : `${fmt(match.similarity)}%`],
               ["Examples in matched class", match.reference_samples],
               ["Indexed examples", reference.index?.samples],
-              [
-                "Index state",
-                reference.index?.ready
-                  ? "Available"
-                  : report
-                    ? "Not built"
-                    : "Unknown",
-              ],
+              ["Index state", reference.index?.ready ? "Available" : report ? "Not built" : "Unknown"],
             ]}
           />
-          <p className="footnote">
-            Similarity ≠ model accuracy or probability. Published normal/rotten
-            labels are not silently converted to FreshFusion's four stages.
-          </p>
+          <p className="footnote">Similarity ≠ model accuracy or probability. Published normal/rotten labels are not silently converted to FreshFusion's four stages.</p>
         </Panel>
-        <Panel title="Multi-view Analyst" eyebrow="PHYSICAL EVIDENCE">
+
+        <Panel title="Multi-view Analyst" eyebrow="PHYSICAL EVIDENCE" className="analystPanel multiviewAnalystPanel">
+          <AnalystLead Icon={Layers3} title="Physical consistency" note="Changed viewpoints, identity consistency and presentation checks" />
           <Facts
             items={[
               ["Captured recent views", multiview.views?.join(", ") || "None"],
               ["Required views", multiview.required_views ?? 3],
               ["Physical fruit status", titleCase(multiview.status)],
-              [
-                "Screen/photo suspicion",
-                fmt(multiview.screen_suspicion_pct) + "%",
-              ],
-              [
-                "Appearance diversity",
-                fmt(multiview.appearance_diversity_pct) + "%",
-              ],
-              [
-                "Identity consistency",
-                fmt(multiview.identity_consistency_pct) + "%",
-              ],
+              ["Screen/photo suspicion", fmt(multiview.screen_suspicion_pct) + "%"],
+              ["Appearance diversity", fmt(multiview.appearance_diversity_pct) + "%"],
+              ["Identity consistency", fmt(multiview.identity_consistency_pct) + "%"],
             ]}
           />
-          <p className="footnote">
-            {multiview.message ||
-              "Move around the real fruit, changing the selected view. A monocular camera cannot guarantee liveness."}
-          </p>
+          <p className="footnote">{multiview.message || "Move around the real fruit, changing the selected view. A monocular camera cannot guarantee liveness."}</p>
         </Panel>
       </div>
 
-      <Panel title="Evidence agreement" eyebrow="CROSS-MODAL CONSISTENCY">
+      <Panel title="Evidence agreement" eyebrow="CROSS-MODAL CONSISTENCY" className="agreementPanel premiumSectionPanel">
         <div className="agreementHeader">
           <div>
-            <StatusChip tone={agreementTone}>
-              {agreement?.status || "INSUFFICIENT"}
-            </StatusChip>
-            <p>
-              {agreement?.summary ||
-                "Collect vision and hardware sensor evidence to compare freshness-bearing signals."}
-            </p>
+            <StatusChip tone={agreementTone}>{agreement?.status || "INSUFFICIENT"}</StatusChip>
+            <p>{agreement?.summary || "Collect vision and hardware sensor evidence to compare freshness-bearing signals."}</p>
           </div>
           <div className="agreementCount">
             <strong>{agreement?.counted_sources ?? 0}</strong>
@@ -186,16 +168,17 @@ export default function Investigation({ session }) {
             </div>
           ))}
         </div>
-        <p className="footnote">
-          {agreement?.note ||
-            "Reference and multi-view evidence are not treated as equivalent freshness votes."}
-        </p>
+        <p className="footnote">{agreement?.note || "Reference and multi-view evidence are not treated as equivalent freshness votes."}</p>
       </Panel>
 
-      <Panel title="Evidence critic" eyebrow="DETERMINISTIC CHECKS">
-        <StatusChip tone={critic?.blocking ? "warning" : "neutral"}>
-          {critic?.status || "NEEDS MORE DATA"}
-        </StatusChip>
+      <Panel title="Evidence critic" eyebrow="DETERMINISTIC CHECKS" className="criticPanel premiumSectionPanel">
+        <div className="sectionStatusHeader">
+          <div className="sectionIcon"><ShieldCheck size={19} /></div>
+          <div>
+            <StatusChip tone={critic?.blocking ? "warning" : "neutral"}>{critic?.status || "NEEDS MORE DATA"}</StatusChip>
+            <p>Every release candidate must survive explicit missing-evidence, contradiction and freshness checks.</p>
+          </div>
+        </div>
         <div className="criticGrid">
           {[
             ["Supporting evidence", "supporting_evidence"],
@@ -203,56 +186,36 @@ export default function Investigation({ session }) {
             ["Contradictions", "contradictions"],
             ["Warnings", "warnings"],
           ].map(([name, key]) => (
-            <div key={key}>
+            <div key={key} className={`criticBucket critic-${key}`}>
               <h3>{name}</h3>
               {critic?.[key]?.length ? (
                 <ul className="findingList">
-                  {critic[key].map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
+                  {critic[key].map((item) => <li key={item}>{item}</li>)}
                 </ul>
               ) : (
-                <p className="muted">
-                  {critic ? "None recorded." : "Awaiting evidence."}
-                </p>
+                <p className="muted">{critic ? "None recorded." : "Awaiting evidence."}</p>
               )}
             </div>
           ))}
         </div>
       </Panel>
-      <Panel
-        title="Final assessment"
-        eyebrow="FRESHNESS HYPOTHESIS → CRITIC → FUSION"
-      >
+
+      <Panel title="Final assessment" eyebrow="FRESHNESS HYPOTHESIS → CRITIC → FUSION" className="assessmentPanel premiumSectionPanel">
         <div className="assessment">
           <div>
             <StatusChip tone={decision?.verdict_ready ? "good" : "warning"}>
-              {decision?.verdict_ready
-                ? "EXPERIMENTAL ASSESSMENT"
-                : "VERDICT LOCKED"}
+              {decision?.verdict_ready ? "EXPERIMENTAL ASSESSMENT" : "VERDICT LOCKED"}
             </StatusChip>
-            <h2>
-              {decision?.verdict_ready
-                ? titleCase(decision.label)
-                : decision?.status || "More evidence required"}
-            </h2>
-            <p>
-              {decision?.reason ||
-                "Connect the backend and collect camera plus hardware evidence."}
-            </p>
+            <h2>{decision?.verdict_ready ? titleCase(decision.label) : decision?.status || "More evidence required"}</h2>
+            <p>{decision?.reason || "Connect the backend and collect camera plus hardware evidence."}</p>
           </div>
           <div className="assessmentScore">
-            <strong>
-              {decision?.verdict_ready ? fmt(decision.freshness_score, 0) : "—"}
-            </strong>
+            <strong>{decision?.verdict_ready ? fmt(decision.freshness_score, 0) : "—"}</strong>
             <span>/100 freshness</span>
           </div>
         </div>
         {decision?.verdict_ready && (
-          <p>
-            Deterministic confidence: {fmt(decision.confidence)}%.{" "}
-            {decision.confidence_method}
-          </p>
+          <p>Deterministic confidence: {fmt(decision.confidence)}%. {decision.confidence_method}</p>
         )}
       </Panel>
 
