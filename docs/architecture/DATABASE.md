@@ -2,15 +2,16 @@
 
 ## Purpose
 
-FreshFusion needs an audit trail, not only a latest score. The database must preserve which inspection received which camera/sensor evidence, what the system assessed, what a human later verified, and which evidence was used at each stage.
+FreshFusion needs an audit trail, not only a latest score. The database preserves which inspection received which camera/sensor evidence, what the system assessed, what a human later verified, and which investigation/validation snapshot was saved.
 
 ## Current database layer
 
 - SQLAlchemy ORM
 - SQLite by default through `DATABASE_URL`
-- PostgreSQL-compatible engine configuration is present, but PostgreSQL is not yet the default physically verified development path
+- PostgreSQL-compatible engine configuration is present, but PostgreSQL is not yet the physically verified primary prototype path
 - `SessionLocal` manages request-scoped sessions
-- startup currently uses `Base.metadata.create_all`
+- `Base.metadata.create_all` remains as a compatibility/fresh-database fallback
+- Alembic is now the formal migration mechanism used by the launcher before backend startup
 
 ## Current persistent entities
 
@@ -18,58 +19,23 @@ FreshFusion needs an audit trail, not only a latest score. The database must pre
 
 One inspection/sample record.
 
-Important fields:
-
-- `sample_id`
-- `fruit_type`
-- `variety`
-- `source`
-- `status`
-- timestamps
+Important fields: sample ID, fruit type, variety/source, status and timestamps.
 
 ### `sensor_readings`
 
 Time-series ESP32/simulator evidence linked to a sample.
 
-Stores:
-
-- device ID
-- temperature
-- humidity
-- `mq135_raw`
-- optional legacy gas/VOC fields
-- RSSI / uptime
-- extra metrics / provenance
-- capture timestamp
+Stores device ID, temperature, humidity, `mq135_raw`, optional legacy gas/VOC fields, RSSI/uptime, provenance/extra metrics and timestamp.
 
 ### `fruit_images`
 
 Camera evidence linked to a sample.
 
-Stores:
-
-- viewpoint/angle
-- file path/URL
-- image dimensions
-- analysis JSON
-- optional ground-truth label
-- upload timestamp
+Stores viewpoint, file URL, image dimensions, analysis JSON, optional ground-truth label and timestamp.
 
 ### `fusion_results`
 
-Append-only system assessments.
-
-Stores:
-
-- freshness score
-- sensor score
-- vision score
-- system label
-- confidence
-- risk
-- explanation
-- components JSON
-- timestamp
+Append-only system assessments containing freshness/sensor/vision scores, system label, confidence, risk, explanation, components JSON and timestamp.
 
 ### `inspection_control`
 
@@ -77,15 +43,36 @@ Single-chamber active capture target. Browsing history must not silently change 
 
 ### `human_verifications`
 
-Append-only human review/audit records.
+Append-only human review/audit records containing action, FreshFusion ground truth when supplied, reviewer/notes, assessment snapshot and timestamp.
+
+### `investigation_runs`
+
+Immutable investigation snapshots used for audit/debug/demo reproducibility.
 
 Stores:
 
-- action (`accept`, `incorrect`, `ground_truth`)
-- FreshFusion ground truth when supplied
-- reviewer/notes
-- assessment snapshot
+- sample ID
+- trigger (`manual-ui`, `gemma-explanation`, etc.)
+- evidence/analyst/agreement/critic/decision snapshot
+- optional Gemma explanation
 - timestamp
+
+### `validation_runs`
+
+Frozen validation snapshots derived from comparable human-ground-truth inspections.
+
+Stores:
+
+- run ID/name
+- protocol
+- comparable sample count
+- metrics snapshot
+- dataset/record snapshot
+- timestamp
+
+### `model_versions`
+
+Model artifact provenance table for future validated ML deployments. Presence in this table must never be interpreted as proof of accuracy.
 
 ## Current relationship model
 
@@ -94,97 +81,120 @@ FruitSample
   |-- SensorReading[]
   |-- FruitImage[]
   |-- FusionResult[]
+  |-- InvestigationRun[]
   `-- HumanVerification[]  (linked by sample_id)
 
 InspectionControl
   `-- active FruitSample
+
+ValidationRun[]
+  `-- frozen evaluation snapshots
+
+ModelVersion[]
+  `-- artifact provenance
 ```
 
 ## Data integrity rules
 
 1. Public dataset labels and FreshFusion human ground truth are different concepts.
-2. System predictions must never overwrite human verification.
-3. Human verification must not rewrite historical model/fusion output.
-4. Simulator readings may be stored, but cannot unlock a physical verdict.
+2. System predictions never overwrite human verification.
+3. Human verification never rewrites historical model/fusion output.
+4. Simulator readings may be stored but cannot unlock a physical verdict.
 5. History browsing is read-only with respect to the active capture target.
 6. Explicitly labelled/review-referenced evidence should not be deleted by ordinary preview retention.
-7. Final UI results should come from current gate semantics, not legacy placeholder scores.
+7. Final UI results come from current gate semantics, not legacy placeholder scores.
+8. Validation metrics are computed only from human ground-truth records that include a comparable conclusive decision snapshot.
+9. Multiple camera views of one physical fruit are one validation sample, not independent samples.
+10. Investigation/validation snapshots are audit records and should be treated as append-only.
 
-## Migration status
+## Alembic migration status
 
-There is currently no formal Alembic migration history. Additive tables are created by SQLAlchemy metadata startup. This works for the current prototype but is not sufficient as the schema becomes more complex.
+Alembic configuration now lives in:
 
-Before major schema expansion:
+```text
+backend/alembic.ini
+backend/alembic/env.py
+backend/alembic/versions/
+```
 
-1. back up `freshfusion.db`;
-2. introduce Alembic;
-3. create a baseline migration for the current schema;
-4. test migrations against a copy of the existing database;
-5. never replace or silently reset live demo data.
+The first hardening migration adds:
 
-## Planned persistence layers
+- `investigation_runs`
+- `validation_runs`
+- `model_versions`
 
-These are **planned**, not currently implemented database tables.
+The launcher runs:
+
+```text
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+before starting FastAPI.
+
+The baseline migration is intentionally additive and safe for the existing prototype database. Fresh databases still use SQLAlchemy metadata as a compatibility bootstrap after the migration stamp.
+
+Before future schema changes:
+
+1. run `backup_freshfusion.ps1`;
+2. create a new Alembic revision;
+3. never rewrite an already-applied migration;
+4. test against a copy of the real database;
+5. never delete/reset live demo data to solve a migration problem.
+
+## Validation persistence
+
+The live validation service compares the latest human ground-truth review per inspection with the decision snapshot stored at review time.
+
+It can calculate real observational:
+
+- confusion matrix
+- accuracy
+- macro precision
+- macro recall
+- macro F1
+- per-class support/metrics
+
+When comparable records exist these results remain labelled **PRELIMINARY**, because ordinary collected observations are not automatically an independent held-out scientific test set.
+
+`POST /api/v1/datasets/validation-runs` freezes the current evaluation into `validation_runs` for later comparison.
+
+## Investigation persistence
+
+The normal investigation GET remains read-only and re-evaluates time-dependent gates.
+
+Explicit snapshots can be saved through:
+
+```text
+POST /api/v1/samples/{sample_id}/investigation/snapshot
+GET  /api/v1/samples/{sample_id}/investigation/snapshots
+```
+
+Gemma explanations also save an investigation snapshot automatically so the language explanation remains tied to the deterministic evidence/critic/decision state it summarized.
+
+## Still planned / future scaling
 
 ### `device_sessions`
 
-Purpose: bind a phone/ESP32/chamber identity to an inspection and make multi-device expansion explicit.
-
-Possible fields:
-
-- session ID
-- sample ID
-- device ID/type
-- started/ended timestamps
-- provenance/auth/pairing metadata
+A future multi-device version should bind phone/ESP32/chamber identity to an inspection explicitly. The current single-chamber prototype uses `inspection_control` and inspection-specific phone pairing.
 
 ### `evidence_events`
 
-Purpose: persistent event timeline independent of reconstructing everything from raw tables.
+The current Evidence Timeline can be reconstructed from stored image/sensor/fusion/review timestamps. A dedicated event table should be added only when reconstruction becomes insufficient or stronger event provenance is required.
 
-Possible events:
+## Backup/export
 
-- inspection created
-- fruit detected
-- image accepted/rejected
-- sensor packet accepted/rejected
-- reference match updated
-- physical validation updated
-- critic state changed
-- fusion computed
-- human verification added
+Use:
 
-### `investigation_runs`
+```powershell
+.\backup_freshfusion.ps1
+```
 
-Purpose: preserve analyst/critic/decision snapshots for reproducibility rather than only recomputing current state.
+For a database + uploads backup:
 
-### `validation_runs`
+```powershell
+.\backup_freshfusion.ps1 -IncludeUploads
+```
 
-Purpose: record immutable evaluation runs, split manifests, metrics and artifact references.
+Backups are written under `.runtime/backups/`, which is ignored by Git.
 
-### `model_versions`
-
-Purpose: track which CV/ML/reference/fusion configuration produced a result.
-
-## Why these planned tables matter
-
-Without explicit version/session/run provenance, a later algorithm update can change how old evidence is interpreted. For SIH this may be acceptable temporarily, but a production or research-grade system must be able to answer:
-
-- Which model/rules generated this assessment?
-- Which exact images and readings were used?
-- Was the device physical or simulator?
-- Was the evidence current at decision time?
-- Who supplied the ground truth?
-- Which validation split produced a claimed metric?
-
-## Backup/export requirement
-
-Before the final demo, add a simple documented backup/export procedure for:
-
-- database file;
-- labelled images;
-- public reference index metadata;
-- validation manifests/reports;
-- model artifacts if any are actually deployed.
-
-The demo should be recoverable without losing collected evidence.
+Before the final demo, keep at least one offline copy of the database and important evidence outside the working repository directory.
