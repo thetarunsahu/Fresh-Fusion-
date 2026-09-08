@@ -27,15 +27,32 @@ def list_samples(limit: int = 50, db: Session = Depends(get_db)):
     rows = db.query(FruitSample).order_by(FruitSample.created_at.desc()).limit(min(limit, 200)).all()
     image_counts = dict(db.query(FruitImage.sample_id, func.count(FruitImage.id)).group_by(FruitImage.sample_id).all())
     sensor_counts = dict(db.query(SensorReading.sample_id, func.count(SensorReading.id)).group_by(SensorReading.sample_id).all())
+    review_counts = dict(db.query(HumanVerification.sample_id, func.count(HumanVerification.id)).group_by(HumanVerification.sample_id).all())
+    latest_reviews = {}
+    for review in (
+        db.query(HumanVerification)
+        .order_by(HumanVerification.created_at.desc(), HumanVerification.id.desc())
+        .all()
+    ):
+        latest_reviews.setdefault(review.sample_id, review)
+
     output = []
     for row in rows:
         result = db.query(FusionResult).filter_by(sample_id=row.sample_id).order_by(FusionResult.created_at.desc()).first()
         gate = (result.components or {}).get("validation", {}) if result else {}
-        output.append({**sample_info(row), "camera_frames": image_counts.get(row.sample_id, 0),
-                       "sensor_readings": sensor_counts.get(row.sample_id, 0),
-                       "last_recorded_verdict_ready": bool(gate.get("verdict_ready")),
-                       "last_assessed_at": utc_iso(result.created_at) if result else None,
-                       "verification_state": gate.get("status", "not-assessed")})
+        latest_review = latest_reviews.get(row.sample_id)
+        output.append({
+            **sample_info(row),
+            "camera_frames": image_counts.get(row.sample_id, 0),
+            "sensor_readings": sensor_counts.get(row.sample_id, 0),
+            "last_recorded_verdict_ready": bool(gate.get("verdict_ready")),
+            "last_assessed_at": utc_iso(result.created_at) if result else None,
+            "verification_state": gate.get("status", "not-assessed"),
+            "human_review_count": review_counts.get(row.sample_id, 0),
+            "latest_ground_truth": latest_review.ground_truth if latest_review else None,
+            "last_review_action": latest_review.action if latest_review else None,
+            "last_reviewed_at": utc_iso(latest_review.created_at) if latest_review else None,
+        })
     return output
 
 @router.get("/active")
