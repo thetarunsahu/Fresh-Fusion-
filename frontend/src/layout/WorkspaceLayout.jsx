@@ -6,7 +6,10 @@ import {
   Database,
   History,
   Leaf,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
+
 const pages = [
   ["overview", "Overview", LayoutDashboard],
   ["inspection", "Live Inspection", ScanLine],
@@ -19,6 +22,7 @@ const pages = [
 export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
   return (
     <div className="workspace">
+      <div className="workspaceBackdrop" aria-hidden="true" />
       <aside className="workspaceSidebar">
         <a
           className="workspaceBrand"
@@ -28,40 +32,57 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
           <span className="logoMark">
             <Leaf size={21} />
           </span>
-          <span>
+          <span className="brandCopy">
             <b>FreshFusion</b>
-            <small>Fruit Quality Investigation</small>
+            <small>Fruit Quality Intelligence</small>
           </span>
         </a>
-        <span className="navCaption">INVESTIGATION WORKSPACE</span>
+
+        <div className="prototypeBadge">
+          <Sparkles size={14} />
+          <span>SIH Investigation Prototype</span>
+        </div>
+
+        <span className="navCaption">WORKSPACE</span>
         <nav aria-label="Main navigation">
-          {pages.map(([id, label, Icon]) => (
+          {pages.map(([id, label, Icon], index) => (
             <button
               key={id}
               className={page === id ? "active" : ""}
               aria-current={page === id ? "page" : undefined}
               onClick={() => navigate(id)}
             >
-              <Icon size={18} />
-              {label}
+              <span className="navIcon">
+                <Icon size={18} />
+              </span>
+              <span className="navLabel">{label}</span>
+              <span className="navIndex">0{index + 1}</span>
             </button>
           ))}
         </nav>
+
         <div className="sidebarNote">
-          <b>Evidence before conclusions.</b>
+          <div className="sidebarNoteTitle">
+            <ShieldCheck size={16} />
+            <b>Evidence before conclusions</b>
+          </div>
           <p>
             Apple · Banana
             <br />
-            Experimental SIH prototype
+            Multimodal experimental assessment
           </p>
         </div>
       </aside>
+
       <div className="workspaceMain">
         <header className="workspaceToolbar">{toolbar}</header>
         <main id="main-content">{children}</main>
         <footer className="workspaceFooter">
-          Experimental assessment · Requires calibration and validation · No
-          food-safety certification
+          <span>FreshFusion · Evidence-grounded fruit quality investigation</span>
+          <span>
+            Experimental assessment · Calibration required · No food-safety
+            certification
+          </span>
         </footer>
       </div>
     </div>
