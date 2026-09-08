@@ -89,10 +89,18 @@ function Install-BackendDependencies([string]$PythonPath) {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        & $PythonPath -m pip install --upgrade pip
-        if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
-        & $PythonPath -m pip install -r (Join-Path $BackendDir 'requirements.txt')
-        if ($LASTEXITCODE -ne 0) { throw 'Backend dependency installation failed.' }
+
+        # Native command stdout must be sent directly to the host. If it is left
+        # on PowerShell's success stream, callers such as
+        #   $venvPython = Ensure-PythonEnvironment
+        # receive the pip log lines together with the python.exe path.
+        & $PythonPath -m pip install --upgrade pip 2>&1 | Out-Host
+        $pipUpgradeExit = $LASTEXITCODE
+        if ($pipUpgradeExit -ne 0) { throw 'pip upgrade failed.' }
+
+        & $PythonPath -m pip install -r (Join-Path $BackendDir 'requirements.txt') 2>&1 | Out-Host
+        $pipInstallExit = $LASTEXITCODE
+        if ($pipInstallExit -ne 0) { throw 'Backend dependency installation failed.' }
     } finally {
         $ErrorActionPreference = $previous
     }
@@ -106,11 +114,11 @@ function Ensure-PythonEnvironment {
         Write-Host '[setup] Creating Python virtual environment...' -ForegroundColor Cyan
         $py = Get-Command py.exe -ErrorAction SilentlyContinue
         if ($py) {
-            & $py.Source -3 -m venv (Join-Path $BackendDir '.venv')
+            & $py.Source -3 -m venv (Join-Path $BackendDir '.venv') | Out-Host
         } else {
             $python = Get-Command python.exe -ErrorAction SilentlyContinue
             if (-not $python) { throw 'Python 3 was not found. Install Python and run this script again.' }
-            & $python.Source -m venv (Join-Path $BackendDir '.venv')
+            & $python.Source -m venv (Join-Path $BackendDir '.venv') | Out-Host
         }
         $created = $true
     }
@@ -125,7 +133,8 @@ function Ensure-PythonEnvironment {
         throw 'Backend dependencies are still incomplete after installation.'
     }
 
-    return $venvPython
+    # Keep this function's success output deliberately limited to one value.
+    return [string]$venvPython
 }
 
 function Invoke-DatabaseMigration([string]$PythonPath) {
@@ -166,7 +175,7 @@ function Ensure-FrontendEnvironment {
         try {
             $previous = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
-            & npm.cmd install
+            & npm.cmd install | Out-Host
             $npmExit = $LASTEXITCODE
             $ErrorActionPreference = $previous
             if ($npmExit -ne 0) { throw 'Frontend dependency installation failed.' }
@@ -184,7 +193,7 @@ function Ensure-Cloudflared {
     if ($curl) {
         $previous = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
-        & $curl.Source -L --fail --silent --show-error $url -o $exe
+        & $curl.Source -L --fail --silent --show-error $url -o $exe | Out-Host
         $curlExit = $LASTEXITCODE
         $ErrorActionPreference = $previous
         if ($curlExit -ne 0) { throw 'cloudflared download failed with curl.' }
