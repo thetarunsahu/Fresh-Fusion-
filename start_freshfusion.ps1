@@ -52,7 +52,10 @@ function Stop-Tree($Process) {
     if ($null -ne $Process) {
         try {
             if (-not $Process.HasExited) {
+                $previous = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
                 & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
+                $ErrorActionPreference = $previous
             }
         } catch {}
     }
@@ -66,6 +69,33 @@ function Get-LanIp {
         if ($config) { return $config.IPv4Address.IPAddress }
     } catch {}
     return 'YOUR_LAPTOP_IP'
+}
+
+function Test-PythonDependencies([string]$PythonPath) {
+    # Do not import a missing package directly here: Windows PowerShell can turn
+    # Python stderr into a terminating ErrorRecord when ErrorActionPreference is Stop.
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $PythonPath -c "import importlib.util,sys; names=['fastapi','sqlalchemy','alembic','httpx']; sys.exit(0 if all(importlib.util.find_spec(x) is not None for x in names) else 1)" 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+function Install-BackendDependencies([string]$PythonPath) {
+    Write-Host '[setup] Installing/updating backend dependencies...' -ForegroundColor Cyan
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $PythonPath -m pip install --upgrade pip
+        if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
+        & $PythonPath -m pip install -r (Join-Path $BackendDir 'requirements.txt')
+        if ($LASTEXITCODE -ne 0) { throw 'Backend dependency installation failed.' }
+    } finally {
+        $ErrorActionPreference = $previous
+    }
 }
 
 function Ensure-PythonEnvironment {
@@ -85,12 +115,14 @@ function Ensure-PythonEnvironment {
         $created = $true
     }
 
-    $dependencyCheck = & $venvPython -c "import fastapi, sqlalchemy, alembic, httpx" 2>$null
-    if ($created -or $LASTEXITCODE -ne 0) {
-        Write-Host '[setup] Installing/updating backend dependencies...' -ForegroundColor Cyan
-        & $venvPython -m pip install --upgrade pip
-        & $venvPython -m pip install -r (Join-Path $BackendDir 'requirements.txt')
-        if ($LASTEXITCODE -ne 0) { throw 'Backend dependency installation failed.' }
+    if ($created -or -not (Test-PythonDependencies $venvPython)) {
+        Install-BackendDependencies $venvPython
+    } else {
+        Write-Host '[setup] Backend dependencies already available.' -ForegroundColor DarkGreen
+    }
+
+    if (-not (Test-PythonDependencies $venvPython)) {
+        throw 'Backend dependencies are still incomplete after installation.'
     }
 
     return $venvPython
@@ -104,10 +136,25 @@ function Invoke-DatabaseMigration([string]$PythonPath) {
     }
 
     Write-Host '[db] Applying database migrations...' -ForegroundColor Cyan
-    & $PythonPath -m alembic -c $config upgrade head
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Database migration failed. Back up freshfusion.db and inspect the Alembic error before continuing.'
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        Push-Location $BackendDir
+        try {
+            $migrationOutput = (& $PythonPath -m alembic -c 'alembic.ini' upgrade head 2>&1 | Out-String)
+            $migrationExit = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+    } finally {
+        $ErrorActionPreference = $previous
     }
+
+    if ($migrationExit -ne 0) {
+        if ($migrationOutput) { Write-Host $migrationOutput -ForegroundColor Red }
+        throw 'Database migration failed. Back up freshfusion.db and inspect the Alembic error above before continuing.'
+    }
+    Write-Host '[db] Database schema is current.' -ForegroundColor DarkGreen
 }
 
 function Ensure-FrontendEnvironment {
@@ -116,7 +163,14 @@ function Ensure-FrontendEnvironment {
     if (-not (Test-Path (Join-Path $FrontendDir 'node_modules'))) {
         Write-Host '[setup] Installing frontend packages...' -ForegroundColor Cyan
         Push-Location $FrontendDir
-        try { & npm.cmd install } finally { Pop-Location }
+        try {
+            $previous = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            & npm.cmd install
+            $npmExit = $LASTEXITCODE
+            $ErrorActionPreference = $previous
+            if ($npmExit -ne 0) { throw 'Frontend dependency installation failed.' }
+        } finally { Pop-Location }
     }
 }
 
@@ -128,8 +182,12 @@ function Ensure-Cloudflared {
     $url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe'
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if ($curl) {
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         & $curl.Source -L --fail --silent --show-error $url -o $exe
-        if ($LASTEXITCODE -ne 0) { throw 'cloudflared download failed with curl.' }
+        $curlExit = $LASTEXITCODE
+        $ErrorActionPreference = $previous
+        if ($curlExit -ne 0) { throw 'cloudflared download failed with curl.' }
     } else {
         Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $exe
     }
