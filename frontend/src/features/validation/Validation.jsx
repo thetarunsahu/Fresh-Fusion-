@@ -47,7 +47,7 @@ function ConfusionMatrix({ matrix }) {
 export default function Validation({ summary, reload }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const metrics = summary?.metrics || {};
+  const metrics = summary?.evaluation || {};
   const metricStatus = metrics.status || "NOT YET VALIDATED";
   const hasMetrics = metrics.sample_count > 0;
 
