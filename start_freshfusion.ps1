@@ -1,6 +1,7 @@
 param(
     [int]$FrontendPort = 5173,
-    [int]$BackendPort = 8000
+    [int]$BackendPort = 8000,
+    [switch]$LocalOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,21 +70,44 @@ function Get-LanIp {
 
 function Ensure-PythonEnvironment {
     $venvPython = Join-Path $BackendDir '.venv\Scripts\python.exe'
-    if (Test-Path $venvPython) { return $venvPython }
+    $created = $false
 
-    Write-Host '[setup] Creating Python virtual environment...' -ForegroundColor Cyan
-    $py = Get-Command py.exe -ErrorAction SilentlyContinue
-    if ($py) {
-        & $py.Source -3 -m venv (Join-Path $BackendDir '.venv')
-    } else {
-        $python = Get-Command python.exe -ErrorAction SilentlyContinue
-        if (-not $python) { throw 'Python 3 was not found. Install Python and run this script again.' }
-        & $python.Source -m venv (Join-Path $BackendDir '.venv')
+    if (-not (Test-Path $venvPython)) {
+        Write-Host '[setup] Creating Python virtual environment...' -ForegroundColor Cyan
+        $py = Get-Command py.exe -ErrorAction SilentlyContinue
+        if ($py) {
+            & $py.Source -3 -m venv (Join-Path $BackendDir '.venv')
+        } else {
+            $python = Get-Command python.exe -ErrorAction SilentlyContinue
+            if (-not $python) { throw 'Python 3 was not found. Install Python and run this script again.' }
+            & $python.Source -m venv (Join-Path $BackendDir '.venv')
+        }
+        $created = $true
     }
 
-    & $venvPython -m pip install --upgrade pip
-    & $venvPython -m pip install -r (Join-Path $BackendDir 'requirements.txt')
+    $dependencyCheck = & $venvPython -c "import fastapi, sqlalchemy, alembic, httpx" 2>$null
+    if ($created -or $LASTEXITCODE -ne 0) {
+        Write-Host '[setup] Installing/updating backend dependencies...' -ForegroundColor Cyan
+        & $venvPython -m pip install --upgrade pip
+        & $venvPython -m pip install -r (Join-Path $BackendDir 'requirements.txt')
+        if ($LASTEXITCODE -ne 0) { throw 'Backend dependency installation failed.' }
+    }
+
     return $venvPython
+}
+
+function Invoke-DatabaseMigration([string]$PythonPath) {
+    $config = Join-Path $BackendDir 'alembic.ini'
+    if (-not (Test-Path $config)) {
+        Write-Host '[db] Alembic config not found; backend metadata fallback will be used.' -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host '[db] Applying database migrations...' -ForegroundColor Cyan
+    & $PythonPath -m alembic -c $config upgrade head
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Database migration failed. Back up freshfusion.db and inspect the Alembic error before continuing.'
+    }
 }
 
 function Ensure-FrontendEnvironment {
@@ -134,8 +158,8 @@ try {
     $env:FRESHFUSION_BACKEND_PORT = "$BackendPort"
 
     $venvPython = Ensure-PythonEnvironment
+    Invoke-DatabaseMigration $venvPython
     Ensure-FrontendEnvironment
-    $cloudflared = Ensure-Cloudflared
 
     $frontendOut = Join-Path $RuntimeDir 'frontend.out.log'
     $frontendErr = Join-Path $RuntimeDir 'frontend.err.log'
@@ -153,42 +177,59 @@ try {
     $frontendProcess = Start-Process @frontendParams
     Wait-Port $FrontendPort 'Frontend'
 
-    $tunnelOut = Join-Path $RuntimeDir 'tunnel.out.log'
-    $tunnelErr = Join-Path $RuntimeDir 'tunnel.err.log'
-    Remove-Item $tunnelOut, $tunnelErr -Force -ErrorAction SilentlyContinue
-
-    Write-Host '[2/3] Creating trusted HTTPS phone link...' -ForegroundColor Cyan
-    $tunnelParams = @{
-        FilePath = $cloudflared
-        ArgumentList = @('tunnel', '--url', "http://127.0.0.1:$FrontendPort", '--no-autoupdate')
-        PassThru = $true
-        RedirectStandardOutput = $tunnelOut
-        RedirectStandardError = $tunnelErr
-    }
-    $tunnelProcess = Start-Process @tunnelParams
-
     $tunnelUrl = $null
-    $deadline = (Get-Date).AddSeconds(45)
-    while ((Get-Date) -lt $deadline -and -not $tunnelUrl) {
-        if ($tunnelProcess.HasExited) { break }
-        $text = ''
-        if (Test-Path $tunnelOut) { $text += (Get-Content $tunnelOut -Raw -ErrorAction SilentlyContinue) }
-        if (Test-Path $tunnelErr) { $text += "`n" + (Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue) }
-        if ($text -match 'https://[a-zA-Z0-9-]+\.trycloudflare\.com') {
-            $tunnelUrl = $Matches[0]
-            break
+    $phoneUrl = $null
+
+    if (-not $LocalOnly) {
+        try {
+            $cloudflared = Ensure-Cloudflared
+            $tunnelOut = Join-Path $RuntimeDir 'tunnel.out.log'
+            $tunnelErr = Join-Path $RuntimeDir 'tunnel.err.log'
+            Remove-Item $tunnelOut, $tunnelErr -Force -ErrorAction SilentlyContinue
+
+            Write-Host '[2/3] Creating trusted HTTPS phone link...' -ForegroundColor Cyan
+            $tunnelParams = @{
+                FilePath = $cloudflared
+                ArgumentList = @('tunnel', '--url', "http://127.0.0.1:$FrontendPort", '--no-autoupdate')
+                PassThru = $true
+                RedirectStandardOutput = $tunnelOut
+                RedirectStandardError = $tunnelErr
+            }
+            $tunnelProcess = Start-Process @tunnelParams
+
+            $deadline = (Get-Date).AddSeconds(45)
+            while ((Get-Date) -lt $deadline -and -not $tunnelUrl) {
+                if ($tunnelProcess.HasExited) { break }
+                $text = ''
+                if (Test-Path $tunnelOut) { $text += (Get-Content $tunnelOut -Raw -ErrorAction SilentlyContinue) }
+                if (Test-Path $tunnelErr) { $text += "`n" + (Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue) }
+                if ($text -match 'https://[a-zA-Z0-9-]+\.trycloudflare\.com') {
+                    $tunnelUrl = $Matches[0]
+                    break
+                }
+                Start-Sleep -Milliseconds 500
+            }
+
+            if ($tunnelUrl) {
+                $phoneUrl = "$tunnelUrl/phone.html"
+                $env:PHONE_DASHBOARD_URL = $phoneUrl
+            } else {
+                Write-Host '[2/3] Phone tunnel unavailable; continuing in local-only recovery mode.' -ForegroundColor Yellow
+                Stop-Tree $tunnelProcess
+                $tunnelProcess = $null
+                Remove-Item Env:PHONE_DASHBOARD_URL -ErrorAction SilentlyContinue
+            }
+        } catch {
+            Write-Host "[2/3] Phone tunnel failed: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host '      Continuing with laptop dashboard + backend. Phone camera may be unavailable.' -ForegroundColor Yellow
+            Stop-Tree $tunnelProcess
+            $tunnelProcess = $null
+            Remove-Item Env:PHONE_DASHBOARD_URL -ErrorAction SilentlyContinue
         }
-        Start-Sleep -Milliseconds 500
+    } else {
+        Write-Host '[2/3] Local-only mode selected; skipping phone tunnel.' -ForegroundColor Yellow
+        Remove-Item Env:PHONE_DASHBOARD_URL -ErrorAction SilentlyContinue
     }
-
-    if (-not $tunnelUrl) {
-        $details = ''
-        if (Test-Path $tunnelErr) { $details = Get-Content $tunnelErr -Raw -ErrorAction SilentlyContinue }
-        throw "Could not create the trusted phone link. Tunnel output:`n$details"
-    }
-
-    $phoneUrl = "$tunnelUrl/phone.html"
-    $env:PHONE_DASHBOARD_URL = $phoneUrl
 
     $backendOut = Join-Path $RuntimeDir 'backend.out.log'
     $backendErr = Join-Path $RuntimeDir 'backend.err.log'
@@ -212,22 +253,35 @@ try {
     Write-Host ''
     Write-Host 'READY' -ForegroundColor Green
     Write-Host "Laptop dashboard : http://localhost:$FrontendPort" -ForegroundColor White
-    Write-Host "Phone camera     : $phoneUrl" -ForegroundColor Yellow
+    if ($phoneUrl) {
+        Write-Host "Phone camera     : $phoneUrl" -ForegroundColor Yellow
+    } else {
+        Write-Host 'Phone camera     : unavailable in local-only recovery mode' -ForegroundColor Yellow
+    }
+    Write-Host "Backend health   : http://localhost:$BackendPort/api/v1/health" -ForegroundColor White
+    Write-Host "Ollama health    : http://localhost:$BackendPort/api/v1/ai/ollama/health" -ForegroundColor White
     Write-Host "ESP32 API        : $esp32Url" -ForegroundColor White
     Write-Host ''
     Write-Host 'FreshFusion automatically moved away from any busy ports.' -ForegroundColor Green
-    Write-Host 'Phone does NOT need to be on the same Wi-Fi.' -ForegroundColor Green
-    Write-Host 'Open the laptop dashboard and scan its QR code.' -ForegroundColor White
-    Write-Host 'On the phone, allow Camera once. If auto-start is blocked, tap Start camera.' -ForegroundColor White
+    if ($phoneUrl) {
+        Write-Host 'Phone does NOT need to be on the same Wi-Fi when using the HTTPS tunnel.' -ForegroundColor Green
+        Write-Host 'Open the laptop dashboard and scan its QR code.' -ForegroundColor White
+        Write-Host 'On the phone, allow Camera once. If auto-start is blocked, tap Start camera.' -ForegroundColor White
+    }
     Write-Host 'Keep this PowerShell window open while FreshFusion is running.' -ForegroundColor DarkYellow
     Write-Host ''
 
     Start-Process "http://localhost:$FrontendPort"
 
+    $tunnelWarned = $false
     while ($true) {
         if ($frontendProcess.HasExited) { throw 'Frontend stopped unexpectedly. Check .runtime/frontend.err.log' }
         if ($backendProcess.HasExited) { throw 'Backend stopped unexpectedly. Check .runtime/backend.err.log' }
-        if ($tunnelProcess.HasExited) { throw 'Phone tunnel stopped unexpectedly. Check .runtime/tunnel.err.log' }
+        if ($null -ne $tunnelProcess -and $tunnelProcess.HasExited -and -not $tunnelWarned) {
+            Write-Host 'Phone tunnel stopped. Dashboard/backend remain online; use local-only recovery mode.' -ForegroundColor Yellow
+            $tunnelWarned = $true
+            $tunnelProcess = $null
+        }
         Start-Sleep -Seconds 2
     }
 }
