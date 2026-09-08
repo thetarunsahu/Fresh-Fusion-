@@ -11,6 +11,7 @@ import History from "./features/history/History";
 import { fuse, validationSummary } from "./api";
 import { StatusChip } from "./shared/Panel";
 import "./workspace.css";
+import "./final-hardening.css";
 
 const routes = new Set([
   "overview",
