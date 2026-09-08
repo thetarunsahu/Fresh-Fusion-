@@ -26,12 +26,19 @@ def reference_status():
 
 @router.get("/validation")
 def validation(db: Session = Depends(get_db)):
-    live_metrics = current_validation_snapshot(db)
+    evaluation = current_validation_snapshot(db)
     latest_run = (
         db.query(ValidationRun)
         .order_by(ValidationRun.created_at.desc(), ValidationRun.id.desc())
         .first()
     )
+    legacy_metrics = {
+        name: {
+            "status": evaluation["status"],
+            "value": evaluation.get(name),
+        }
+        for name in ["accuracy", "precision", "recall", "f1", "confusion_matrix"]
+    }
     return {
         "datasets": DATASETS,
         "reference_index": reference_index_status(),
@@ -45,7 +52,8 @@ def validation(db: Session = Depends(get_db)):
                 "Identity currently uses CV/reference heuristics."
             ),
         },
-        "metrics": live_metrics,
+        "metrics": legacy_metrics,
+        "evaluation": evaluation,
         "latest_persisted_run": serialize_validation_run(latest_run) if latest_run else None,
         "label_policy": (
             "FreshFusion human labels are stored separately from published fresh/normal/rotten reference classes. "
