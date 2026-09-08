@@ -12,6 +12,7 @@ import { fuse, validationSummary } from "./api";
 import { StatusChip } from "./shared/Panel";
 import "./workspace.css";
 import "./final-hardening.css";
+import "./premium-ui.css";
 
 const routes = new Set([
   "overview",
