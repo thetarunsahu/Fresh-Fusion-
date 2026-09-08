@@ -49,6 +49,7 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
             <button
               key={id}
               className={page === id ? "active" : ""}
+              aria-label={label}
               aria-current={page === id ? "page" : undefined}
               onClick={() => navigate(id)}
             >
