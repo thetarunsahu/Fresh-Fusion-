@@ -10,6 +10,7 @@ export default function useInspection(followCameraSwitch = false) {
   const [recent, setRecent] = useState([]);
   const [healthInfo, setHealthInfo] = useState(null);
   const [online, setOnline] = useState(false);
+  const [connectionChecked, setConnectionChecked] = useState(false);
   const [active, setActive] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,12 +71,16 @@ export default function useInspection(followCameraSwitch = false) {
           selectSample(target || rows[0]);
       } catch {
         if (!disposed) {
+          setHealthInfo(null);
           setOnline(false);
           setReport(null);
           setData((current) => ({ ...current, fusion: null }));
         }
       } finally {
-        if (!disposed) timer = setTimeout(poll, 5000);
+        if (!disposed) {
+          setConnectionChecked(true);
+          timer = setTimeout(poll, 5000);
+        }
       }
     };
     poll();
@@ -195,6 +200,7 @@ export default function useInspection(followCameraSwitch = false) {
     recent,
     healthInfo,
     online,
+    connectionChecked,
     active,
     err,
     busy,
