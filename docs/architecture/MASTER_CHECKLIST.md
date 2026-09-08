@@ -5,7 +5,7 @@ This file exists so the project is not managed only by whatever feature someone 
 ## Status legend
 
 - `[x]` foundation exists
-- `[~]` partial / needs verification or completion
+- `[~]` partial / needs physical verification, data or completion
 - `[ ]` not yet complete
 
 ## 1. Data acquisition
@@ -17,7 +17,7 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] MQ135 raw ADC capture
 - [~] Real phone background/reconnect validation
 - [~] Real ESP32 reconnect/network validation
-- [ ] Controlled capture protocol documented for all team demos
+- [x] Controlled capture/real-world validation protocol documented
 - [ ] Multi-device/chamber pairing model
 
 ## 2. Inspection/session control
@@ -38,12 +38,13 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Fusion history
 - [x] Human verification
 - [x] Active inspection control
-- [ ] Alembic migration system
-- [ ] Investigation run snapshots
+- [x] Alembic migration system
+- [x] Investigation run snapshots
 - [ ] Persistent evidence-event table if reconstruction becomes insufficient
-- [ ] Model/version provenance table
-- [ ] Validation-run persistence
-- [ ] Final backup/export procedure
+- [x] Model/version provenance table foundation
+- [x] Validation-run persistence
+- [x] Local database/evidence backup script
+- [~] Migration + backup recovery test on the real demo database copy
 
 ## 4. Vision intelligence
 
@@ -55,7 +56,7 @@ This file exists so the project is not managed only by whatever feature someone 
 - [~] Lighting/background robustness
 - [~] Real fruit identity validation
 - [ ] Validated trained freshness model
-- [ ] Model artifact/version tracking
+- [~] Model artifact/version tracking workflow (table exists; no validated model yet)
 
 ## 5. Sensor intelligence
 
@@ -63,7 +64,8 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Hardware vs simulator provenance
 - [x] Stale sensor gating
 - [x] Relative MQ135 ADC contribution
-- [~] Baseline/chamber experiments
+- [x] MQ135 relative-response experiment protocol documented
+- [~] Baseline/chamber experiments physically performed
 - [ ] Calibrated gas interpretation
 - [ ] Fruit-specific sensor calibration study
 
@@ -97,9 +99,9 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Multi-view Analyst
 - [x] Evidence Critic
 - [x] Structured decision state
-- [~] Evidence agreement visualization
-- [ ] Persistent investigation run snapshots
-- [ ] Final report generation
+- [x] Evidence Agreement contract + visualization
+- [x] Persistent investigation run snapshots
+- [~] Final report generation (structured snapshot + Gemma explanation exist; PDF/report export still optional)
 
 ## 9. Fusion and confidence
 
@@ -107,7 +109,7 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Sensor + vision fusion path
 - [x] Locked verdict when evidence is incomplete
 - [x] Simulator exclusion from physical verdict
-- [~] Current weights documented as experimental
+- [x] Current weights documented as experimental
 - [ ] Calibrate thresholds/weights with real ground truth
 - [ ] Independent held-out evaluation
 
@@ -117,9 +119,10 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Gemma structured explanation contract
 - [x] LLM separated from final deterministic verdict
 - [x] Offline-safe core architecture
-- [~] Verify on the actual demo laptop
-- [~] Frontend explanation UX
-- [ ] Report-generation use case if time permits
+- [x] Ollama + `gemma3:4b` verified on Tarun's laptop through the local API
+- [x] Frontend explanation UX implemented
+- [~] End-to-end explanation click verified inside the final FreshFusion branch/build
+- [~] Report-generation use case if time permits
 
 ## 11. Human verification and ground truth
 
@@ -129,7 +132,7 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Append-only review record
 - [x] Assessment snapshot
 - [~] Reviewer workflow/UI polish
-- [ ] Formal ground-truth protocol
+- [x] Ground-truth/real-world validation protocol documented
 - [ ] Enough real labelled physical samples for evaluation
 
 ## 12. Dataset and validation
@@ -138,13 +141,15 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Local reference counts/state
 - [x] Human label counts/state
 - [x] Honest `NOT YET VALIDATED` behavior
-- [ ] Sample-based immutable split manifest
-- [ ] Ground-truth review process
-- [ ] Validation run ingestion
-- [ ] Confusion matrix from real test set
-- [ ] Precision/recall/F1 from real test set
-- [ ] Per-fruit/per-class error analysis
-- [ ] Repeated condition/lighting test
+- [x] Real observational validation-metrics engine from human review snapshots
+- [x] Validation-run persistence
+- [x] Confusion-matrix UI when comparable real labels exist
+- [x] Accuracy / macro precision / macro recall / macro F1 computation when real comparable labels exist
+- [x] Per-class precision/recall/F1/support computation
+- [ ] Sample-based immutable train/validation/test split manifest
+- [ ] Enough real ground-truth inspections to populate trustworthy metrics
+- [ ] Independent held-out test set
+- [ ] Repeated condition/lighting study
 
 ## 13. Frontend/product workspace
 
@@ -156,12 +161,14 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] History
 - [x] Protected sample selection/state guards
 - [x] WebSocket lifecycle guards
+- [x] Evidence Agreement UI
+- [x] Gemma explanation UI
+- [x] Validation metrics/confusion-matrix UI
 - [~] Evidence filtering/export
 - [~] History search/pagination
-- [~] Validation workflow completion
 - [~] Human review UX
-- [ ] Final professional UI consistency pass
-- [ ] Accessibility/responsive polish
+- [~] Final professional UI consistency pass
+- [~] Accessibility/responsive polish
 
 ## 14. Error and degraded states
 
@@ -171,10 +178,11 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Physical verification blocked
 - [x] Missing reference index
 - [x] Locked/inconclusive verdict
-- [~] Ollama unavailable UX
-- [~] Camera permission/network failure UX
+- [x] Ollama unavailable UX foundation
+- [~] Camera permission/network failure UX physical verification
 - [~] Backend disconnected UX
-- [ ] Demo recovery playbook
+- [x] Launcher local-only recovery mode
+- [x] Demo recovery playbook
 
 ## 15. Realtime and performance
 
@@ -189,6 +197,7 @@ This file exists so the project is not managed only by whatever feature someone 
 
 - [x] Local prototype flow
 - [x] Trusted HTTPS phone tunnel launcher
+- [x] Local-only degraded launcher mode
 - [~] Environment/config documentation
 - [ ] Authentication before public deployment
 - [ ] Secure device pairing
@@ -198,10 +207,12 @@ This file exists so the project is not managed only by whatever feature someone 
 
 ## 17. Testing
 
-- [x] Backend regression suite
-- [x] Frontend production build
+- [x] Backend regression suite foundation
+- [x] Validation/agreement unit regression tests added
+- [x] Frontend production build path
 - [x] Browser workflow tests
 - [x] Virtual-camera regression path
+- [~] Run all automated tests against this final hardening branch on Tarun's laptop
 - [~] Real phone tests
 - [~] Real ESP32 tests
 - [~] Real fruit spoof/negative tests
@@ -223,40 +234,45 @@ This file exists so the project is not managed only by whatever feature someone 
 - [x] Hardware architecture
 - [x] Testing strategy
 - [x] Team workflow
-- [ ] Final demo runbook
-- [ ] Final API reference if contracts expand
+- [x] Real-world validation protocol
+- [x] MQ135 experiment protocol
+- [x] Final demo/recovery runbook
+- [~] Final API reference if contracts expand further
 
 ## 19. Internal-round PPT and presentation
 
-- [ ] New internal-round PPT based on current architecture
-- [ ] Problem/gap evidence
-- [ ] Architecture diagram
-- [ ] Innovation comparison
-- [ ] Real prototype images
-- [ ] Honest validation slide
-- [ ] Demo sequence
+- [~] New six-slide internal-round PPT being rebuilt around current architecture
+- [~] Problem/gap evidence
+- [~] Architecture diagram
+- [~] Innovation comparison
+- [ ] Real final prototype screenshots/images
+- [x] Honest validation wording defined
+- [x] Demo sequence documented
 - [ ] Sajiya narrative practice
 - [ ] Tarun technical demo practice
 - [ ] Soha/Prerna Q&A preparation
 
 ## 20. Final definition of done for the current SIH prototype
 
-The project is ready for a serious demo when:
+The software foundation is ready for final physical verification when:
 
 ```text
-Real fruit
+real fruit
   -> correct inspection
   -> multiple physical camera views
   -> fresh physical ESP32 telemetry
   -> analysts populated
+  -> evidence agreement is visible
   -> critic explains evidence quality
   -> deterministic gate releases or blocks responsibly
   -> Gemma can explain but is not required
   -> human can verify/correct
+  -> investigation snapshot persists
   -> evidence persists in history
-  -> validation state is truthful
-  -> team can recover from a service failure
+  -> validation state/metrics are truthful
+  -> database can be migrated/backed up safely
+  -> team can recover from tunnel/Ollama/ESP32 failure
   -> presentation claims match what was actually tested
 ```
 
-Update this checklist as the system evolves. Do not mark scientific validation complete based only on software tests or synthetic fixtures.
+Do not mark scientific validation complete based only on software tests, synthetic fixtures or small observational datasets.
