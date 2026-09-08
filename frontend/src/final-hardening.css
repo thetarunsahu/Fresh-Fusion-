@@ -1,0 +1,187 @@
+.agreementHeader,
+.gemmaHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.agreementHeader > div:first-child,
+.gemmaHeader > div:first-child {
+  max-width: 820px;
+}
+
+.agreementCount {
+  min-width: 150px;
+  text-align: right;
+  padding: 12px 0;
+}
+
+.agreementCount strong {
+  display: block;
+  font-size: 34px;
+  line-height: 1;
+  color: #1f6847;
+}
+
+.agreementCount span {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #738078;
+}
+
+.agreementGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.agreementCard {
+  min-width: 0;
+  border: 1px solid #e0e8e2;
+  border-radius: 10px;
+  padding: 16px;
+  background: linear-gradient(180deg, #fbfdfb 0%, #f6faf7 100%);
+}
+
+.agreementCard h3 {
+  margin: 6px 0 8px;
+  font-size: 14px;
+}
+
+.agreementCard > strong {
+  display: block;
+  min-height: 24px;
+  color: #1d5d40;
+  overflow-wrap: anywhere;
+}
+
+.agreementCard p {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.gemmaHeader .buttonRow {
+  justify-content: flex-end;
+}
+
+.gemmaResult {
+  margin-top: 20px;
+  border-top: 1px solid #e6ece7;
+  padding-top: 20px;
+}
+
+.gemmaSummary,
+.gemmaNextStep {
+  border: 1px solid #dce8df;
+  border-radius: 9px;
+  padding: 16px 18px;
+  background: #f7fbf8;
+}
+
+.gemmaNextStep {
+  margin-top: 16px;
+  background: #f2f8f4;
+}
+
+.gemmaSummary p,
+.gemmaNextStep p {
+  margin-bottom: 0;
+  color: #334b3d;
+}
+
+.validationStatusRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.confusionWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.confusionMatrix {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.confusionMatrix th,
+.confusionMatrix td {
+  border: 1px solid #e1e8e3;
+  padding: 11px 10px;
+  text-align: center;
+}
+
+.confusionMatrix thead th,
+.confusionMatrix tbody th {
+  background: #f4f8f5;
+  color: #52675a;
+  font-weight: 650;
+}
+
+.confusionMatrix td {
+  font-weight: 650;
+  color: #234a35;
+}
+
+.classMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.classMetricCard {
+  border: 1px solid #e1e8e3;
+  border-radius: 10px;
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+  background: #fbfdfb;
+}
+
+.classMetricCard > strong {
+  font-size: 17px;
+  color: #214f36;
+}
+
+.classMetricCard small {
+  color: #6f7f74;
+}
+
+.workspacePanel {
+  box-shadow: 0 1px 1px rgba(20, 49, 33, 0.02), 0 10px 30px rgba(20, 49, 33, 0.025);
+}
+
+@media (max-width: 1100px) {
+  .agreementGrid,
+  .classMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .agreementHeader,
+  .gemmaHeader {
+    flex-direction: column;
+  }
+
+  .agreementCount {
+    text-align: left;
+  }
+
+  .agreementGrid,
+  .classMetricGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .gemmaHeader .buttonRow {
+    justify-content: flex-start;
+  }
+}
