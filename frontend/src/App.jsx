@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, WifiOff, X } from "lucide-react";
 import WorkspaceLayout from "./layout/WorkspaceLayout";
 import useInspection from "./hooks/useInspection";
 import Overview from "./features/overview/Overview";
@@ -107,9 +107,33 @@ export default function App() {
   );
   return (
     <WorkspaceLayout page={page} navigate={navigate} toolbar={toolbar}>
+      {!session.online && (
+        <div role="status" className="systemBanner offlineBanner">
+          <WifiOff size={18} />
+          <div>
+            <b>FreshFusion backend is disconnected.</b>
+            <span>
+              The workspace retries automatically every 5 seconds. Start
+              <code>.\start_freshfusion.ps1</code>; if the phone tunnel is the only
+              problem, use <code>.\start_freshfusion.ps1 -LocalOnly</code>.
+            </span>
+          </div>
+        </div>
+      )}
       {session.err && (
-        <div role="alert" className="workspaceError">
-          {session.err}
+        <div role="alert" className="systemBanner errorBanner">
+          <AlertTriangle size={18} />
+          <div>
+            <b>FreshFusion could not complete the last action.</b>
+            <span>{session.err}</span>
+          </div>
+          <button
+            className="iconButton"
+            aria-label="Dismiss error"
+            onClick={() => session.setErr("")}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
       {session.sample && page !== "overview" && (
