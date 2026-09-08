@@ -51,7 +51,7 @@ export default function HumanVerification({ sampleId, report, onSaved }) {
           </p>
           <div className="chipRow">
             <StatusChip tone={decision?.verdict_ready ? "good" : "warning"}>
-              {decision?.verdict_ready ? "ASSESSMENT AVAILABLE" : "VERDICT LOCKED"}
+              {decision?.verdict_ready ? "ASSESSMENT AVAILABLE" : "ASSESSMENT LOCKED"}
             </StatusChip>
             <StatusChip>{reviews.length} review{reviews.length === 1 ? "" : "s"}</StatusChip>
           </div>
@@ -101,6 +101,7 @@ export default function HumanVerification({ sampleId, report, onSaved }) {
       <div className="reviewActionGrid">
         <button
           className="reviewAction"
+          aria-label="Accept system assessment"
           disabled={busy || !sampleId || !decision?.verdict_ready}
           onClick={() => save("accept")}
         >
