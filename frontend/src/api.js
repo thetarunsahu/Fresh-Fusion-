@@ -2,10 +2,11 @@ export const API_ROOT = import.meta.env.VITE_API_ROOT || window.location.origin;
 export const API = `${API_ROOT}/api/v1`;
 
 async function json(url, options = {}) {
+  const { timeoutMs = 30000, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...fetchOptions, signal: controller.signal });
     if (!res.ok) {
       const body = await res.text();
       let detail;
@@ -58,6 +59,7 @@ export const investigation = (id) =>
 export const explainInvestigation = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain`, {
     method: "POST",
+    timeoutMs: 90000,
   });
 export const saveInvestigationSnapshot = (id, trigger = "manual") =>
   json(
