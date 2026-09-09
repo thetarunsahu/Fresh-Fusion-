@@ -86,11 +86,15 @@ async def ollama_health():
 
 
 @router.post("/samples/{sample_id}/investigation/explain")
-async def explain_investigation(sample_id: str, db: Session = Depends(get_db)):
-    """Ask local Gemma to explain already-computed FreshFusion evidence.
+async def explain_investigation(
+    sample_id: str,
+    question: str | None = Query(default=None, max_length=600),
+    db: Session = Depends(get_db),
+):
+    """Explain or answer a question using already-computed FreshFusion evidence.
 
-    This endpoint never decides the freshness verdict. The deterministic
-    investigation/critic result remains authoritative for gating.
+    Gemma never decides freshness. The deterministic investigation/critic result
+    remains authoritative for release gating.
     """
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
     if not sample:
@@ -115,16 +119,18 @@ async def explain_investigation(sample_id: str, db: Session = Depends(get_db)):
 
     evidence_payload = {
         "sample": investigation["sample"],
+        "evidence": investigation["evidence"],
         "analysts": investigation["analysts"],
         "agreement": investigation.get("agreement"),
         "critic": investigation["critic"],
         "decision": investigation["decision"],
+        "human_verifications": investigation.get("human_verifications", []),
     }
-    explanation = await ollama_client.explain(evidence_payload)
+    explanation = await ollama_client.explain(evidence_payload, question=question)
 
     row = InvestigationRun(
         sample_id=sample_id,
-        trigger="gemma-explanation",
+        trigger="gemma-question" if question else "gemma-explanation",
         snapshot=_snapshot_payload(investigation),
         llm_explanation=explanation,
     )
@@ -136,5 +142,6 @@ async def explain_investigation(sample_id: str, db: Session = Depends(get_db)):
         "status": "ready",
         "required_for_verdict": False,
         "snapshot_id": row.id,
+        "question": question,
         "explanation": explanation,
     }
