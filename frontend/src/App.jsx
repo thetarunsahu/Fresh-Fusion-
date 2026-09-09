@@ -13,6 +13,7 @@ import { StatusChip } from "./shared/Panel";
 import "./workspace.css";
 import "./final-hardening.css";
 import "./premium-ui.css";
+import "./auth-workspace.css";
 
 const routes = new Set([
   "overview",
