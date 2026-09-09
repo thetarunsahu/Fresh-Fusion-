@@ -8,7 +8,7 @@ import {
   Send,
   ShieldCheck,
 } from "lucide-react";
-import { explainInvestigation } from "../../api";
+import { explainInvestigation, ollamaHealth } from "../../api";
 import { Panel, StatusChip } from "../../shared/Panel";
 
 const suggestions = [
@@ -25,17 +25,56 @@ export default function AICopilot({ session }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [ollama, setOllama] = useState(null);
 
   const cameraRecent = report?.evidence?.camera?.recent === true;
   const physicalSensorRecent = report?.evidence?.sensors?.physical_present === true;
   const hasLiveEvidence = cameraRecent || physicalSensorRecent;
-  const canAsk = Boolean(session.sample?.sample_id && report && hasLiveEvidence && !busy);
+  const ollamaReady = ollama?.available === true && ollama?.model_installed !== false;
+  const canAsk = Boolean(
+    session.sample?.sample_id &&
+      report &&
+      hasLiveEvidence &&
+      ollamaReady &&
+      !busy,
+  );
 
   useEffect(() => {
     setQuestion("");
     setMessages([]);
     setError("");
   }, [session.sample?.sample_id]);
+
+  useEffect(() => {
+    let disposed = false;
+    let timer;
+
+    const check = async () => {
+      if (!session.online) {
+        if (!disposed) setOllama({ available: false, model_installed: false });
+      } else {
+        try {
+          const value = await ollamaHealth();
+          if (!disposed) setOllama(value);
+        } catch (healthError) {
+          if (!disposed) {
+            setOllama({
+              available: false,
+              model_installed: false,
+              error: healthError.message,
+            });
+          }
+        }
+      }
+      if (!disposed) timer = setTimeout(check, 5000);
+    };
+
+    check();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [session.online]);
 
   const sources = [
     ["Current sample evidence", Boolean(report?.evidence), FileSearch],
@@ -58,8 +97,8 @@ export default function AICopilot({ session }) {
       if (response.status !== "ready" || !response.explanation) {
         throw new Error(
           response.status === "model-not-installed"
-            ? "Gemma is not installed in Ollama."
-            : "Local Ollama is unavailable. Start Ollama, then retry. The deterministic verdict remains unaffected.",
+            ? "Gemma 3 is not installed in Ollama. Run setup_ollama.ps1 once."
+            : "Local Ollama is unavailable. Start Ollama and retry. The deterministic verdict remains unaffected.",
         );
       }
       setMessages((current) => [
@@ -76,10 +115,27 @@ export default function AICopilot({ session }) {
       ]);
     } catch (err) {
       setError(err.message);
+      try {
+        setOllama(await ollamaHealth());
+      } catch {
+        setOllama({ available: false, model_installed: false });
+      }
     } finally {
       setBusy(false);
     }
   }
+
+  const welcomeTitle = !hasLiveEvidence
+    ? "Collect live evidence first."
+    : !ollamaReady
+      ? "Local AI runtime is not ready."
+      : "Ask about the selected inspection.";
+
+  const welcomeCopy = !hasLiveEvidence
+    ? "The Copilot stays locked until a recent phone-camera frame or physical ESP32 reading exists for the selected inspection. This prevents old or empty samples from looking like live AI analysis."
+    : !ollamaReady
+      ? "FreshFusion evidence is available, but Gemma cannot answer until Ollama is online with gemma3:4b installed. The deterministic investigation continues to work without the LLM."
+      : "Questions are sent with the current evidence snapshot, analyst outputs, critic state and deterministic decision.";
 
   return (
     <div className="featurePage aiCopilotPage ffCopilotPage">
@@ -95,9 +151,15 @@ export default function AICopilot({ session }) {
 
       <section className="ffCopilotStatusBar">
         <div className="chipRow">
-          <StatusChip tone="good">Gemma 3</StatusChip>
-          <StatusChip>Ollama local</StatusChip>
-          <StatusChip tone={hasLiveEvidence ? "good" : "warning"}>{hasLiveEvidence ? "Live evidence ready" : "Live evidence required"}</StatusChip>
+          <StatusChip tone={ollamaReady ? "good" : "warning"}>
+            {ollamaReady ? "Gemma 3 ready" : ollama === null ? "Checking Gemma" : "Gemma unavailable"}
+          </StatusChip>
+          <StatusChip tone={ollama?.available ? "good" : "neutral"}>
+            {ollama?.available ? "Ollama online" : "Ollama offline"}
+          </StatusChip>
+          <StatusChip tone={hasLiveEvidence ? "good" : "warning"}>
+            {hasLiveEvidence ? "Live evidence ready" : "Live evidence required"}
+          </StatusChip>
           <StatusChip>Explanation only</StatusChip>
         </div>
         <span>{availableCount} / {sources.length} evidence groups available</span>
@@ -109,12 +171,8 @@ export default function AICopilot({ session }) {
             {!messages.length && (
               <div className="ffChatWelcome">
                 <span><Bot size={22} /></span>
-                <h3>{hasLiveEvidence ? "Ask about the selected inspection." : "Collect live evidence first."}</h3>
-                <p>
-                  {hasLiveEvidence
-                    ? "Questions are sent with the current evidence snapshot, analyst outputs, critic state and deterministic decision."
-                    : "The Copilot stays locked until a recent phone-camera frame or physical ESP32 reading exists for the selected inspection. This prevents old or empty samples from looking like live AI analysis."}
-                </p>
+                <h3>{welcomeTitle}</h3>
+                <p>{welcomeCopy}</p>
               </div>
             )}
             {messages.map((message, index) => (
@@ -140,6 +198,11 @@ export default function AICopilot({ session }) {
               AI Copilot is waiting for live evidence. Start a new inspection and capture a phone frame or send a physical ESP32 reading first.
             </div>
           )}
+          {hasLiveEvidence && ollama !== null && !ollamaReady && (
+            <div className="notice">
+              Live evidence is ready, but Ollama/Gemma is offline. The verdict engine still works; start Ollama to enable grounded explanations.
+            </div>
+          )}
           {error && <div className="notice">{error}</div>}
 
           <div className="ffSuggestedQuestions">
@@ -152,7 +215,15 @@ export default function AICopilot({ session }) {
             <input
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder={!session.sample ? "Select an inspection first…" : hasLiveEvidence ? "Ask about this sample, evidence, sensors or missing data…" : "Capture live evidence before asking AI…"}
+              placeholder={
+                !session.sample
+                  ? "Select an inspection first…"
+                  : !hasLiveEvidence
+                    ? "Capture live evidence before asking AI…"
+                    : !ollamaReady
+                      ? "Start Ollama / Gemma to ask the Copilot…"
+                      : "Ask about this sample, evidence, sensors or missing data…"
+              }
               disabled={!canAsk}
               maxLength={600}
               aria-label="Ask FreshFusion AI Copilot"
@@ -184,6 +255,8 @@ export default function AICopilot({ session }) {
             <div className="ffSourceMini">
               <span>Camera</span><b>{cameraRecent ? "Recent" : "Waiting / stale"}</b>
               <span>ESP32</span><b>{physicalSensorRecent ? "Recent hardware" : "Waiting / stale"}</b>
+              <span>Ollama</span><b>{ollama?.available ? "Online" : ollama === null ? "Checking" : "Offline"}</b>
+              <span>Gemma</span><b>{ollamaReady ? "Ready" : "Unavailable"}</b>
               <span>Critic</span><b>{report?.critic?.status || "Waiting"}</b>
               <span>Decision</span><b>{report?.decision?.status || "Waiting"}</b>
               <span>Fruit</span><b>{session.sample?.fruit_type || "—"}</b>
