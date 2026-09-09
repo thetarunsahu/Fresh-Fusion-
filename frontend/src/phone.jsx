@@ -9,7 +9,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import CameraStream from "./components/CameraStream";
-import { createSample, health, activeSample, bundle } from "./api";
+import { health, activeSample } from "./api";
 import "./styles.css";
 import "./validation.css";
 
@@ -32,16 +32,33 @@ function PhoneVisionApp() {
     try {
       await health();
       setOnline(true);
-      let active = await activeSample();
-      if (!active) active = await createSample("Auto");
+      const active = await activeSample();
+      if (!active) {
+        setTarget(null);
+        setSample(null);
+        setError("No active inspection. Start a New Inspection on the laptop, then reopen or refresh this phone page.");
+        return;
+      }
+
       setTarget(active);
-      if (!selectedId.current) selectedId.current = active.sample_id;
-      const id = selectedId.current;
-      const payload = await bundle(id);
-      if (id !== selectedId.current) return;
-      setSample(payload.sample);
-      setValidation(payload.fusion?.components?.validation || null);
-      setError("");
+      if (!selectedId.current) {
+        selectedId.current = active.sample_id;
+        const url = new URL(location.href);
+        url.searchParams.set("sample_id", active.sample_id);
+        history.replaceState(null, "", url);
+      }
+
+      if (selectedId.current === active.sample_id) {
+        setSample(active);
+        setError("");
+      } else {
+        setSample((current) =>
+          current?.sample_id === selectedId.current
+            ? current
+            : { sample_id: selectedId.current, fruit_type: "Paired inspection" },
+        );
+        setError("");
+      }
     } catch (e) {
       setOnline(false);
       setError(e.message || String(e));
@@ -66,7 +83,7 @@ function PhoneVisionApp() {
       selectedId.current = result.sample_id;
       setTruth("");
       setSample({ sample_id: result.sample_id, fruit_type: result.fruit_type });
-      setTarget({ sample_id: result.sample_id });
+      setTarget({ sample_id: result.sample_id, fruit_type: result.fruit_type });
       const url = new URL(location.href);
       url.searchParams.set("sample_id", result.sample_id);
       history.replaceState(null, "", url);
@@ -100,7 +117,9 @@ function PhoneVisionApp() {
         <b>
           {sample
             ? `${sample.fruit_type} · ${sample.sample_id}`
-            : "Connecting..."}
+            : target
+              ? "Pairing..."
+              : "Waiting for inspection..."}
         </b>
         <small>
           Scan the real physical fruit. Do not point the camera at a fruit
@@ -122,13 +141,12 @@ function PhoneVisionApp() {
             className="secondary"
             onClick={() => {
               selectedId.current = target.sample_id;
-              setSample(null);
+              setSample(target);
               setValidation(null);
               setFrames(0);
               const url = new URL(location.href);
               url.searchParams.set("sample_id", target.sample_id);
               history.replaceState(null, "", url);
-              syncActiveSample();
             }}
           >
             Pair with active inspection
