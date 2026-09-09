@@ -1,7 +1,20 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 from .database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    full_name = Column(String(120), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(30), default="operator", index=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    last_login_at = Column(DateTime, nullable=True)
+
 
 class FruitSample(Base):
     __tablename__ = "fruit_samples"
