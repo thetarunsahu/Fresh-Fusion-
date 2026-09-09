@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Bot, Cpu, Database, Laptop, ShieldCheck, Smartphone } from "lucide-react";
+import { ollamaHealth } from "../../api";
 import { Panel, Facts, StatusChip } from "../../shared/Panel";
 
 function DeviceCard({ Icon, title, detail, ready, status }) {
@@ -16,17 +18,33 @@ function DeviceCard({ Icon, title, detail, ready, status }) {
 
 export default function SystemPage({ session, user }) {
   const h = session.healthInfo || {};
+  const [ollama, setOllama] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!session.online) {
+      setOllama(null);
+      return () => { alive = false; };
+    }
+    ollamaHealth()
+      .then((value) => { if (alive) setOllama(value); })
+      .catch((error) => { if (alive) setOllama({ available: false, error: error.message }); });
+    return () => { alive = false; };
+  }, [session.online]);
+
   const latestSensor = session.data?.sensors?.at(-1);
   const espReady = session.report?.evidence?.sensors?.physical_present === true;
   const phoneReady = session.report?.evidence?.camera?.recent === true || Boolean(h.phone_dashboard);
   const referenceReady = Boolean(session.report?.analysts?.reference?.index?.ready);
+  const ollamaReady = ollama?.available === true;
+  const gemmaReady = ollamaReady && ollama?.model_installed !== false;
 
   const devices = [
     [Laptop, "Backend API", `FastAPI · ${h.backend_port ? `port ${h.backend_port}` : "local runtime"}`, session.online, session.online ? "ONLINE" : "OFFLINE"],
     [Smartphone, "Phone Camera", h.phone_mode || "Secure capture route", phoneReady, phoneReady ? "READY" : "WAITING"],
     [Cpu, "ESP32", latestSensor?.device_id || "DHT11 + MQ135", espReady, espReady ? "CONNECTED" : "WAITING"],
-    [Bot, "Ollama", "127.0.0.1:11434", session.online, session.online ? "CHECK VIA AI" : "OFFLINE"],
-    [Bot, "Gemma 3", "gemma3:4b · explanation only", session.online, session.online ? "LOCAL" : "WAITING"],
+    [Bot, "Ollama", ollama?.base_url || "127.0.0.1:11434", ollamaReady, ollamaReady ? "ONLINE" : ollama ? "UNAVAILABLE" : "CHECKING"],
+    [Bot, "Gemma 3", ollama?.model || "gemma3:4b", gemmaReady, gemmaReady ? "INSTALLED" : ollama ? "MISSING" : "CHECKING"],
     [Database, "Reference Index", referenceReady ? "Public reference index loaded" : "Reference status pending", referenceReady, referenceReady ? "READY" : "WAITING"],
   ];
 
@@ -59,8 +77,8 @@ export default function SystemPage({ session, user }) {
         <Panel title="Runtime & safety boundaries" eyebrow="LOCAL CONFIGURATION" className="systemConfigPanel">
           <Facts items={[
             ["Backend", h.backend_port ? `http://localhost:${h.backend_port}` : "Local dynamic port"],
-            ["Ollama", "http://127.0.0.1:11434"],
-            ["Model", "gemma3:4b"],
+            ["Ollama", ollama?.base_url || "http://127.0.0.1:11434"],
+            ["Model", ollama?.model || "gemma3:4b"],
             ["Phone mode", h.phone_mode || "trusted HTTPS / local-only"],
             ["Verdict authority", "Deterministic investigation"],
             ["LLM role", "Explanation only"],
