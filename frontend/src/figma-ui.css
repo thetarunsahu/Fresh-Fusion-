@@ -1,0 +1,400 @@
+/* FreshFusion Figma implementation layer
+   One visual system for all nine screens: forest green, mint and warm ivory.
+   Imported last so legacy prototype CSS cannot split the product into different themes. */
+
+:root {
+  --fig-forest-950: #102c20;
+  --fig-forest-900: #153a29;
+  --fig-forest-800: #18452f;
+  --fig-green-700: #1f5f3b;
+  --fig-green-600: #2f7a4e;
+  --fig-green-500: #3b8b5d;
+  --fig-mint-300: #dcebd3;
+  --fig-mint-200: #e7f1d8;
+  --fig-mint-100: #eef6e9;
+  --fig-ivory: #f8fbf5;
+  --fig-paper: #ffffff;
+  --fig-ink: #203329;
+  --fig-muted: #6a7b71;
+  --fig-line: #d7e3d2;
+  --fig-warning: #d6a63d;
+  --fig-warning-bg: #fff4d8;
+  --fig-danger: #8b4737;
+  --fig-danger-bg: #f9e7e2;
+  --fig-radius-lg: 22px;
+  --fig-radius-md: 14px;
+  --fig-shadow: 0 16px 42px rgba(26, 70, 47, 0.06);
+}
+
+html { background: var(--fig-ivory); }
+body, #root { min-height: 100vh; background: var(--fig-ivory); color: var(--fig-ink); }
+button, input, select, textarea { font-family: inherit; }
+
+/* ---------- public portal ---------- */
+.landingPage { background: var(--fig-ivory) !important; }
+.landingNav {
+  width: calc(100% - 64px);
+  max-width: 1376px;
+  min-height: 68px;
+  height: auto;
+  margin: 24px auto 0;
+  padding: 12px 20px;
+  border: 1px solid var(--fig-line);
+  border-radius: 22px;
+  background: rgba(255,255,255,.96);
+  box-shadow: none;
+}
+.portalLogo {
+  background: var(--fig-green-700) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+.portalBrand b { color: var(--fig-ink); }
+.portalBrand small { color: #76867d; }
+.landingNav nav a { color: #5d6f64; }
+.portalPrimary {
+  border: 0 !important;
+  background: var(--fig-green-700) !important;
+  box-shadow: none !important;
+  border-radius: 12px !important;
+}
+.portalSecondary,
+.portalGhost {
+  color: var(--fig-green-700) !important;
+  border: 1px solid var(--fig-line) !important;
+  background: #fff !important;
+}
+.landingHero {
+  max-width: 1312px;
+  min-height: 540px;
+  padding: 56px 0 34px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(440px, .92fr);
+  gap: 64px;
+}
+.portalKicker {
+  border-color: #d1e1cc !important;
+  background: var(--fig-mint-100) !important;
+  color: var(--fig-green-600) !important;
+}
+.landingHeroCopy h1 {
+  font-size: clamp(46px, 4.4vw, 64px) !important;
+  color: var(--fig-ink) !important;
+}
+.landingHeroCopy h1 span { color: var(--fig-green-600) !important; }
+.landingHeroCopy > p { color: #617268; font-size: 15px; }
+.landingTrust span {
+  border: 1px solid var(--fig-line);
+  border-radius: 999px;
+  background: #f4f8f1;
+  padding: 8px 12px;
+}
+.landingHeroVisual {
+  min-height: 470px;
+  border-radius: 30px;
+  background: var(--fig-forest-800);
+  overflow: hidden;
+}
+.heroFruitOrb {
+  width: 360px !important;
+  height: 360px !important;
+  background:
+    radial-gradient(circle at center, var(--fig-mint-300) 0 19%, transparent 20%),
+    radial-gradient(circle at center, transparent 0 39%, rgba(163,198,170,.3) 40% 40.5%, transparent 41%),
+    radial-gradient(circle at center, transparent 0 58%, rgba(163,198,170,.22) 59% 59.5%, transparent 60%) !important;
+}
+.heroFruitCore {
+  width: 92px !important;
+  height: 92px !important;
+  border-radius: 26px !important;
+  background: var(--fig-mint-300) !important;
+  color: var(--fig-green-700) !important;
+  box-shadow: none !important;
+}
+.heroOrbitLabel { background: white !important; box-shadow: none !important; border: 0 !important; color: var(--fig-green-700) !important; }
+.heroOutcomeCard { right: 38px !important; bottom: 32px !important; border-radius: 14px !important; box-shadow: none !important; }
+.landingMetrics {
+  max-width: 1312px;
+  margin-bottom: 28px;
+  border-color: var(--fig-line);
+  background: #fff;
+  gap: 0;
+}
+.landingMetrics > div { background: #fff; border-right: 1px solid var(--fig-line); }
+.landingMetrics > div:last-child { border-right: 0; }
+.landingMetrics strong { color: var(--fig-green-700); }
+.landingSection,
+.landingArchitecture,
+.landingEvidence { max-width: 1312px; }
+.landingSection { padding-top: 42px; }
+.landingCapabilityGrid article,
+.ragProofCard { box-shadow: none !important; border-color: var(--fig-line) !important; }
+
+/* auth screen */
+.authPage { grid-template-columns: minmax(430px, 43%) 1fr !important; background: var(--fig-ivory) !important; }
+.authStoryPanel {
+  padding: 38px 48px !important;
+  background: var(--fig-forest-800) !important;
+}
+.authStoryPanel::after { border-color: rgba(220,235,211,.08) !important; }
+.authStoryCopy { max-width: 500px; }
+.authStoryCopy h1 { font-size: clamp(40px, 3.8vw, 54px) !important; }
+.authFeatureList > div { background: rgba(47,122,78,.28) !important; border-color: rgba(220,235,211,.15) !important; }
+.authFormPanel { background: var(--fig-ivory) !important; }
+.authFormWrap {
+  width: min(590px, calc(100% - 64px)) !important;
+  padding: 42px 44px !important;
+  border: 1px solid var(--fig-line) !important;
+  border-radius: 28px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+.authModeSwitch { background: var(--fig-mint-100) !important; border-color: var(--fig-line) !important; }
+.authModeSwitch button.active { background: #fff !important; color: var(--fig-green-700) !important; box-shadow: 0 0 0 1px var(--fig-line); }
+.authFormHeading span { color: var(--fig-green-600) !important; }
+.authForm input,
+.authForm select,
+.passwordField { border-color: var(--fig-line) !important; border-radius: 12px !important; }
+.authSubmit { background: var(--fig-green-700) !important; border-radius: 14px !important; box-shadow: none !important; }
+.authSecurityNote { background: #f0f6ec !important; border-color: var(--fig-line) !important; }
+
+/* ---------- workspace shell ---------- */
+.workspace {
+  grid-template-columns: 228px minmax(0, 1fr) !important;
+  min-height: 100vh;
+  background: var(--fig-ivory) !important;
+  color: var(--fig-ink) !important;
+}
+.workspaceBackdrop { display: none !important; }
+.workspaceSidebar {
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+  padding: 28px 16px !important;
+  gap: 18px !important;
+  background: var(--fig-forest-950) !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+.workspaceBrand { padding: 0 8px !important; color: #fff !important; }
+.workspaceBrand .logoMark {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 13px !important;
+  background: var(--fig-green-600) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+.workspaceBrand b { color: #fff; font-size: 18px !important; }
+.workspaceBrand small { color: #a9bbaf !important; font-size: 8px !important; letter-spacing: .05em; text-transform: uppercase; }
+.prototypeBadge {
+  width: fit-content !important;
+  margin: 2px 8px 10px !important;
+  padding: 7px 10px !important;
+  border: 0 !important;
+  background: rgba(47,122,78,.24) !important;
+  color: #cbe0d0 !important;
+}
+.navCaption { display: none !important; }
+.workspace nav { gap: 4px !important; margin: 0 !important; }
+.workspace nav button {
+  min-height: 44px;
+  padding: 10px 11px !important;
+  border-radius: 12px !important;
+  color: #b8c8be !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.workspace nav button:hover { color: #fff !important; background: rgba(255,255,255,.05) !important; }
+.workspace nav button.active { color: #fff !important; background: #1b4934 !important; box-shadow: none !important; }
+.navIcon { width: 26px !important; height: 26px !important; background: transparent !important; }
+.workspace nav button.active .navIcon { background: transparent !important; color: #fff !important; }
+.navIndex { display: none !important; }
+.sidebarNote {
+  margin-top: auto !important;
+  padding: 16px !important;
+  border: 1px solid #25523c !important;
+  border-radius: 16px !important;
+  background: #153a29 !important;
+  color: #fff !important;
+}
+.sidebarNoteTitle { color: #d7e3da !important; font-size: 10px; }
+.sidebarNote p { color: #afc3b3 !important; font-size: 9px; line-height: 1.6; }
+.workspaceMain { background: var(--fig-ivory) !important; }
+.workspaceToolbar {
+  min-height: 82px !important;
+  padding: 20px 38px 12px !important;
+  position: sticky !important;
+  top: 0;
+  z-index: 30;
+  border-bottom: 0 !important;
+  background: rgba(248,251,245,.93) !important;
+  backdrop-filter: blur(14px);
+  box-shadow: none !important;
+}
+.selectedInspection { gap: 5px 9px !important; }
+.selectedInspection > .eyebrow { width: 100%; color: var(--fig-green-600) !important; font-size: 8px !important; }
+.selectedInspection > b { color: var(--fig-ink) !important; font-size: 12px !important; }
+.toolbarActions { gap: 8px !important; }
+.toolbarActions select { height: 40px; min-width: 128px; background: #fff !important; border: 1px solid var(--fig-line) !important; border-radius: 12px !important; }
+.workspace button.primary,
+.workspace button.secondary { min-height: 40px; border-radius: 12px !important; box-shadow: none !important; }
+.workspace button.primary { background: var(--fig-green-700) !important; border-color: var(--fig-green-700) !important; }
+.workspace button.secondary { background: #fff !important; border-color: var(--fig-line) !important; color: var(--fig-green-700) !important; }
+.workspaceUser {
+  min-height: 48px;
+  padding: 7px 11px !important;
+  border: 1px solid var(--fig-line) !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+}
+.workspaceUserIcon { background: var(--fig-mint-300) !important; color: var(--fig-green-700) !important; }
+.workspaceLogout { border: 1px solid var(--fig-line) !important; background: #fff !important; }
+.workspaceFooter { background: var(--fig-ivory) !important; border-color: var(--fig-line) !important; color: var(--fig-muted) !important; }
+
+/* shared page anatomy */
+.featurePage {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 18px 38px 46px !important;
+}
+.pageIntro { margin-bottom: 26px !important; }
+.pageIntro .eyebrow,
+.ffPageHeading .eyebrow { color: var(--fig-green-600) !important; font-size: 9px !important; }
+.pageIntro h1,
+.ffPageHeading h1 {
+  margin: 5px 0 7px;
+  color: var(--fig-ink) !important;
+  font-size: clamp(28px, 3vw, 36px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -.035em !important;
+}
+.pageIntro p { color: var(--fig-muted) !important; max-width: 760px; }
+.workspacePanel,
+.panel {
+  border: 1px solid var(--fig-line) !important;
+  border-radius: 20px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+.workspacePanel { padding: 22px !important; }
+.panelHeading h2,
+.workspacePanel > h2 { color: var(--fig-ink) !important; }
+.eyebrow, .sectionKicker, .panelHead span { color: var(--fig-green-600); }
+.statusChip {
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: #f1f5ef !important;
+  color: var(--fig-muted) !important;
+}
+.statusChip.good { background: var(--fig-mint-300) !important; color: var(--fig-green-700) !important; }
+.statusChip.warning { background: var(--fig-warning-bg) !important; color: #8a641b !important; }
+.facts > div { border-color: #edf2ea !important; }
+.facts dt { color: var(--fig-muted) !important; }
+.facts dd { color: var(--fig-ink) !important; }
+.notice,
+.systemBanner,
+.captureBanner { border-color: var(--fig-line) !important; border-radius: 14px !important; box-shadow: none !important; }
+.captureBanner { margin: 0 38px 12px; background: var(--fig-mint-100) !important; }
+
+/* overview, mapped directly from Figma */
+.ffPageHeading { margin-bottom: 14px; }
+.ffOverviewHero {
+  display: grid;
+  grid-template-columns: minmax(0,1.35fr) minmax(330px,.65fr);
+  gap: 22px;
+  padding: 22px;
+  border: 1px solid var(--fig-line);
+  border-radius: 22px;
+  background: #fff;
+}
+.ffOverviewHeroCopy { padding: 2px 0; }
+.ffOverviewHeroCopy h2 { margin: 9px 0 8px; font-size: clamp(30px,3vw,38px); line-height: 1.02; letter-spacing: -.04em; color: var(--fig-ink); }
+.ffOverviewHeroCopy p { max-width: 660px; color: var(--fig-muted); font-size: 12px; line-height: 1.65; }
+.ffOverviewHeroCopy .buttonRow { margin-top: 18px; }
+.ffReadinessCard { padding: 16px; border-radius: 18px; background: #f5f9f2; }
+.ffReadinessHead { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; }
+.ffReadinessHead strong { display:block; margin-top:6px; font-size:18px; }
+.ffReadinessRows { margin-top: 18px; display:grid; gap:8px; }
+.ffReadinessRows > div { display:flex; justify-content:space-between; gap:12px; font-size:10px; color:var(--fig-green-600); }
+.ffReadinessRows b.ready { color:#298f61; }.ffReadinessRows b.waiting { color:var(--fig-warning); }
+.ffInlineNotice { margin:14px 0 0; }
+.ffMetricGrid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-top:16px; }
+.ffMetricCard { min-height:112px; padding:14px; border:1px solid var(--fig-line); border-radius:18px; background:#fff; }
+.ffMetricHead { display:flex; justify-content:space-between; gap:8px; font-size:8px; font-weight:750; letter-spacing:.05em; text-transform:uppercase; color:var(--fig-green-600); }
+.ffMetricDot { width:9px;height:9px;border-radius:50%;background:#c8d1ca; }.ffMetricDot.good{background:#2f8b5b}.ffMetricDot.warning{background:#e6a22d}
+.ffMetricCard strong { display:block; margin-top:15px; font-size:23px; color:var(--fig-ink); letter-spacing:-.03em; }
+.ffMetricCard small { display:block; margin-top:13px; color:var(--fig-green-600); font-size:9px; }
+.ffOverviewMainGrid { display:grid; grid-template-columns:1.2fr 1fr; gap:16px; margin-top:16px; }
+.ffVisualCard h2,.ffAnalystSummary h2 { margin:6px 0 16px; font-size:17px; }
+.ffVisualBody { display:grid; grid-template-columns:minmax(0,1fr) 170px; gap:16px; }
+.ffCameraPreview { min-height:220px; border-radius:16px; overflow:hidden; background:var(--fig-forest-800); }
+.ffCameraPreview img { width:100%;height:100%;min-height:220px;object-fit:cover;display:block; }
+.ffCameraEmpty { min-height:220px; display:grid; place-items:center; align-content:center; gap:8px; text-align:center; color:#fff; }
+.ffCameraEmpty span { color:#a8c2b1; font-size:10px; }.ffCameraEmpty b{font-size:18px;}
+.ffViewList { display:grid; gap:7px; align-content:start; }
+.ffViewList > div { min-height:36px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center; border-radius:10px; background:#f5f9f2; color:var(--fig-green-600); font-size:9px; }
+.ffViewList > div.captured { background:var(--fig-mint-100); }.ffViewList b{color:var(--fig-ink);font-size:10px;}
+.ffAnalystRows { display:grid; gap:9px; }
+.ffAnalystRows > div { min-height:48px; padding:9px 11px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-radius:12px; background:#f9fbf8; }
+.ffAnalystRows span b,.ffAnalystRows span small{display:block}.ffAnalystRows span b{font-size:10px}.ffAnalystRows span small{font-size:8px;color:var(--fig-green-600);margin-top:2px}.ffAnalystRows strong{font-size:10px;color:#298f61}
+.ffOverviewBottomGrid { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-top:16px; }
+.ffCriticSummary { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; background:#fbfafc !important; }
+.ffCriticSummary h2 { margin:6px 0 7px;font-size:16px; }.ffCriticSummary p{margin:0;color:var(--fig-green-600);font-size:9px;line-height:1.6}
+.ffCopilotTeaser { padding:18px; border:0; border-radius:18px; background:var(--fig-forest-800); color:#fff; text-align:left; }
+.ffCopilotTeaser > div:first-child{display:flex;gap:8px;align-items:center}.ffCopilotTeaser p{color:#a9c3ae;font-size:9px;line-height:1.55}.ffCopilotBadges{display:flex;gap:6px;flex-wrap:wrap}.ffCopilotBadges span{padding:6px 9px;border-radius:999px;background:#2f7a4e;font-size:8px}.ffCopilotBadges span:last-child{background:#214230}
+.ffScopeNote { margin-top:14px; display:flex; align-items:center; gap:9px; color:var(--fig-muted); font-size:9px; }.ffScopeNote .textButton{margin-left:auto;}
+
+/* investigation */
+.investigationIntro { padding: 0 !important; background: transparent !important; color: inherit !important; display:grid !important; grid-template-columns:1fr 320px !important; gap:18px !important; }
+.investigationIntro h1 { color:var(--fig-ink) !important; font-size:34px !important; }.investigationIntro p{color:var(--fig-muted)!important}.investigationIntro .heroKicker{background:var(--fig-mint-100)!important;color:var(--fig-green-600)!important;border-color:var(--fig-line)!important}
+.investigationStateCard { border:1px solid var(--fig-line)!important;background:#fff!important;border-radius:18px!important;box-shadow:none!important; }
+.premiumAnalystGrid,.analystGrid { display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:14px!important; }
+.analystPanel { min-height:270px; }.analystLeadIcon{background:var(--fig-mint-100)!important;color:var(--fig-green-700)!important}.agreementPanel{background:var(--fig-mint-100)!important}.agreementCard{background:#fff!important;border-color:var(--fig-line)!important}.criticPanel,.assessmentPanel{margin-top:14px}.assessmentPanel{background:var(--fig-forest-800)!important;color:#fff!important}.assessmentPanel h2,.assessmentPanel .panelHeading h2{color:#fff!important}.assessmentPanel p{color:#c6d8cd!important}.assessmentScore strong{color:#fff!important}
+
+/* AI copilot */
+.aiCopilotPage .pageIntro { max-width:none; }
+.aiCopilotPage > .twoPanels { grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr)!important; }
+.aiCopilotPage > .twoPanels > .workspacePanel:first-child { background:#f4f0ff!important; }
+.aiCopilotPage .aiPromptChips span { border:1px solid var(--fig-line);background:#fff;color:var(--fig-green-700);border-radius:999px;padding:8px 11px; }
+.aiCopilotPage .workspacePanel:has(.gemmaHeader) { border:1px solid var(--fig-line)!important;background:#fff!important; }
+.gemmaHeader { align-items:flex-start!important; }.gemmaResult{border-top:1px solid var(--fig-line);margin-top:18px;padding-top:18px}.gemmaSummary{background:var(--fig-mint-100);border-radius:14px;padding:15px}.gemmaNextStep{background:var(--fig-warning-bg)!important;border-radius:14px;padding:14px}
+
+/* live inspection: preserve hardware logic, reskin to the Figma layout */
+.dashboard { background:var(--fig-ivory)!important; }
+.dashboard .content { max-width:none!important;padding:18px 38px 46px!important; }
+.dashboard .workspacePanel:first-child { border-radius:18px!important; }
+.contextRow { margin-top:16px; }.contextRow h1{color:var(--fig-ink)!important}.statusBar{border-color:var(--fig-line)!important;border-radius:14px!important}.statusItem{border-color:var(--fig-line)!important}
+.identityStrip,.validationStrip{border-color:var(--fig-line)!important;background:var(--fig-mint-100)!important;border-radius:18px!important;box-shadow:none!important}.primaryGrid{gap:16px!important}.liveEvidence,.decisionPanel{border-color:var(--fig-line)!important;border-radius:20px!important}.mainImageWrap,.largeEmpty{background:var(--fig-forest-800)!important;border-radius:16px!important}.viewThumb{border-color:var(--fig-line)!important;background:#f5f8f2!important;border-radius:12px!important}.metricCard{border-color:var(--fig-line)!important;border-radius:14px!important;box-shadow:none!important}.metricIcon{background:var(--fig-mint-100)!important;color:var(--fig-green-700)!important}.scoreBlock strong{color:var(--fig-green-700)!important}.panel{box-shadow:none!important}
+
+/* validation */
+.validationFigmaPage .ffValidationStats { display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px; }
+.ffValidationStat { min-height:108px;padding:18px;border:1px solid var(--fig-line);border-radius:18px;background:#fff; }.ffValidationStat span{font-size:8px;color:var(--fig-muted);font-weight:750;letter-spacing:.05em}.ffValidationStat strong{display:block;margin-top:14px;font-size:24px;color:var(--fig-green-700)}.ffValidationStat strong.warning{color:var(--fig-warning)}
+.validationFigmaPage .ffValidationGrid { display:grid;grid-template-columns:1fr 1fr;gap:16px; }.validationFigmaPage .metricPlaceholders>div{border-bottom:1px solid #edf2ea;padding:12px 0}.validationFigmaPage .confusionMatrix td,.validationFigmaPage .confusionMatrix th{border-color:var(--fig-line)!important}.validationFigmaPage .confusionMatrix td{background:#f3f6f1}.validationFigmaPage .confusionMatrix tr th+td:nth-child(n){border-radius:8px}.validationFigmaPage .validationRunsPanel{margin-top:16px;background:var(--fig-mint-100)!important}
+
+/* combined history + evidence */
+.historyEvidencePage { max-width:1380px;margin:0 auto;padding:18px 38px 46px; }
+.historyEvidencePage > .historyEvidenceHeading{margin-bottom:18px}.historyEvidencePage > .historyEvidenceHeading h1{margin:5px 0 7px;font-size:34px;letter-spacing:-.035em}.historyEvidenceLayout{display:grid;grid-template-columns:minmax(340px,.78fr) minmax(0,1.22fr);gap:16px;align-items:start}.historyEvidenceLayout>.featurePage{padding:0!important;margin:0!important;max-width:none!important}.historyEvidenceLayout>.featurePage>.pageIntro{display:none}.historyEvidenceLayout .historyGrid{grid-template-columns:1fr!important}.historyEvidenceLayout .historyToolbar{grid-template-columns:1fr 1fr!important}.historyEvidenceLayout .historyToolbar .searchField{grid-column:1/-1}.historyEvidenceLayout .evidenceToolbar{grid-template-columns:1fr 150px!important}.historyEvidenceLayout .workspacePanel{border-radius:20px!important}.historyEvidenceLayout .evidenceTimeline{max-height:580px;overflow:auto;padding-right:6px}.historyEvidenceLayout .paginationBar{margin:12px 0 0}
+
+/* system */
+.systemPage .systemDeviceGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}.systemDeviceCard{padding:18px;border:1px solid var(--fig-line);border-radius:18px;background:#fff}.systemDeviceHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.systemDeviceHead span{display:flex;align-items:center;gap:8px;font-weight:700}.systemDeviceCard small{display:block;margin-top:10px;color:var(--fig-muted)}.systemDeviceBar{height:12px;margin-top:20px;border-radius:999px;background:var(--fig-mint-100);overflow:hidden}.systemDeviceBar>i{display:block;height:100%;width:82%;background:var(--fig-green-600);border-radius:inherit}.systemPage .systemBottomGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.systemSecurityPanel{background:var(--fig-forest-950)!important;color:#fff!important}.systemSecurityPanel .panelHeading h2,.systemSecurityPanel dd{color:#fff!important}.systemSecurityPanel dt,.systemSecurityPanel p{color:#a9c3ae!important}.systemConfigPanel{background:#fff!important}.systemGuardrail{margin-top:14px;padding:11px 14px;border-radius:12px;background:var(--fig-warning-bg);color:#8a641b;font-size:9px;font-weight:700}
+
+/* motion is intentionally subtle for the professional SIH demo */
+.workspacePanel,.ffMetricCard,.systemDeviceCard,.landingCapabilityGrid article,.authFormWrap { transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease; }
+.workspacePanel:hover,.ffMetricCard:hover,.systemDeviceCard:hover { transform:translateY(-1px); border-color:#c8d9c3!important; }
+.portalPrimary,.workspace button,.ffCopilotTeaser { transition:transform .16s ease,filter .16s ease; }.portalPrimary:hover,.workspace button:hover:not(:disabled),.ffCopilotTeaser:hover{transform:translateY(-1px)}
+
+@media (max-width: 1180px) {
+  .workspace { grid-template-columns: 82px minmax(0,1fr)!important; }
+  .workspaceSidebar { padding:22px 11px!important; }
+  .workspaceBrand .brandCopy,.prototypeBadge span,.navLabel,.sidebarNote,.workspace nav button .navIndex { display:none!important; }
+  .workspaceBrand{justify-content:center!important}.workspace nav button{justify-content:center!important}.navIcon{width:32px!important;height:32px!important}.workspaceToolbar{padding-left:24px!important;padding-right:24px!important}.featurePage,.dashboard .content,.historyEvidencePage{padding-left:24px!important;padding-right:24px!important}.ffMetricGrid{grid-template-columns:repeat(3,1fr)}.ffOverviewMainGrid,.ffOverviewBottomGrid,.historyEvidenceLayout{grid-template-columns:1fr}.systemPage .systemDeviceGrid{grid-template-columns:repeat(2,1fr)}
+}
+
+@media (max-width: 820px) {
+  .landingNav{width:calc(100% - 28px);grid-template-columns:1fr auto;margin-top:14px}.landingNav nav{display:none}.landingHero{padding:42px 20px;grid-template-columns:1fr}.landingHeroVisual{min-height:380px}.landingMetrics{grid-template-columns:repeat(2,1fr);margin:0 20px 30px;padding:0}.landingCapabilityGrid{grid-template-columns:1fr 1fr}.landingArchitecture,.landingEvidence{grid-template-columns:1fr}.authPage{grid-template-columns:1fr!important}.authStoryPanel{min-height:auto;padding:28px 24px!important}.authStoryCopy{margin:50px 0 28px}.authStoryFoot{display:none}.authFormPanel{padding:30px 0}.authFormWrap{width:calc(100% - 28px)!important;padding:30px 24px!important}
+  .workspace { display:block!important; }.workspaceSidebar{position:relative!important;width:100%;height:auto;display:flex!important;flex-direction:row!important;align-items:center;overflow:auto}.workspaceBrand{flex:0 0 auto}.workspace nav{display:flex!important;gap:4px!important}.workspace nav button{min-width:48px}.workspaceToolbar{position:relative!important;flex-direction:column!important;align-items:stretch!important}.toolbarActions{justify-content:flex-start}.featurePage,.dashboard .content,.historyEvidencePage{padding:18px 16px 36px!important}.ffOverviewHero,.investigationIntro,.aiCopilotPage>.twoPanels,.validationFigmaPage .ffValidationGrid,.systemPage .systemBottomGrid{grid-template-columns:1fr!important}.ffMetricGrid{grid-template-columns:repeat(2,1fr)}.premiumAnalystGrid,.analystGrid{grid-template-columns:1fr!important}.ffVisualBody{grid-template-columns:1fr}.ffViewList{grid-template-columns:repeat(5,1fr)}.ffViewList>div{display:grid;justify-items:center}.systemPage .systemDeviceGrid{grid-template-columns:1fr}.historyEvidenceLayout{grid-template-columns:1fr}.historyEvidenceLayout .historyToolbar{grid-template-columns:1fr!important}.historyEvidenceLayout .evidenceToolbar{grid-template-columns:1fr!important}.captureBanner{margin:0 16px 12px}.primaryGrid{grid-template-columns:1fr!important}
+}
+
+@media (max-width: 540px) {
+  .landingNavActions .portalGhost,.signedInAs{display:none}.landingHeroCopy h1{font-size:42px!important}.landingCapabilityGrid{grid-template-columns:1fr}.landingMetrics{grid-template-columns:1fr}.ffMetricGrid{grid-template-columns:1fr}.ffViewList{grid-template-columns:repeat(2,1fr)}.toolbarActions select{width:100%}.workspaceUser{width:100%}.workspaceToolbar .toolbarActions{display:grid;grid-template-columns:1fr 1fr}.workspaceToolbar .toolbarActions select,.workspaceToolbar .workspaceUser{grid-column:1/-1}
+}
