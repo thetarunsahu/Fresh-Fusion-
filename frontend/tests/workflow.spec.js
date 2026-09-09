@@ -97,7 +97,14 @@ async function fixtures(page, overrides = {}) {
     const id = path.split("/")[4];
     const sample = id === a.sample_id ? a : b;
     if (path === "/api/v1/auth/me") payload = authUser;
-    else if (path.endsWith("/health"))
+    else if (path === "/api/v1/ai/ollama/health")
+      payload = {
+        available: true,
+        model: "gemma3:4b",
+        model_installed: true,
+        base_url: "http://127.0.0.1:11434",
+      };
+    else if (path === "/api/v1/health")
       payload = {
         status: "online",
         phone_dashboard: "http://127.0.0.1:5188/phone.html",
@@ -177,9 +184,11 @@ test("authenticated workspace exposes final seven protected pages without fabric
   });
   await page.goto("/#overview");
   await expect(
-    page.getByRole("heading", { name: "From a fruit to an evidence-backed assessment." }),
+    page.getByRole("heading", { name: "FreshFusion Investigation Workspace" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start new inspection" })).toBeDisabled();
+  await expect(
+    page.locator(".ffOverviewHero").getByRole("button", { name: "New inspection", exact: true }),
+  ).toBeDisabled();
   for (const name of [
     "Live Inspection",
     "Investigation",
@@ -198,6 +207,16 @@ test("authenticated workspace exposes final seven protected pages without fabric
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await page.screenshot({ path: test.info().outputPath("overview-mobile.png"), fullPage: true });
   expect(errors).toEqual([]);
+});
+
+test("AI Copilot stays locked until selected inspection has recent live evidence", async ({ page }) => {
+  await fixtures(page);
+  await page.goto("/#ai");
+  await expect(page.getByRole("heading", { name: "Ask the evidence — not a generic chatbot." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collect live evidence first." })).toBeVisible();
+  await expect(page.getByLabel("Ask FreshFusion AI Copilot")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Ask", exact: true })).toBeDisabled();
+  await expect(page.getByText("Gemma 3 ready", { exact: true })).toBeVisible();
 });
 
 test("history selection survives polling, late responses and disposed WebSockets", async ({ page }) => {
@@ -248,7 +267,7 @@ test("human ground truth persists separately while the verdict stays locked", as
   await expect(page.getByRole("status")).toContainText("Human observation saved");
   expect(reviews[0].ground_truth).toBe("ripe");
   await expect(page.getByText("VERDICT LOCKED", { exact: true })).toBeVisible();
-  await expect(page.locator(".assessmentScore strong")).toHaveText("—");
+  await expect(page.locator(".ffLockedScore strong")).toHaveText("—");
   await page.getByRole("navigation").getByRole("button", { name: "Dataset & Validation", exact: true }).click();
   await expect(page.getByText("NOT YET VALIDATED", { exact: true })).toHaveCount(5);
   await page.screenshot({ path: test.info().outputPath("validation-desktop.png"), fullPage: true });
