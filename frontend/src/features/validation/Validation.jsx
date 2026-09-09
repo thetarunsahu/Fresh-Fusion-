@@ -1,17 +1,13 @@
 import { useState } from "react";
 import { createValidationRun } from "../../api";
-import { Panel, Facts, StatusChip } from "../../shared/Panel";
+import { Panel, StatusChip } from "../../shared/Panel";
 import { fmt, titleCase } from "../../shared/format";
 
 function Metric({ name, value, status }) {
   return (
     <div>
       <span>{name}</span>
-      {value == null ? (
-        <StatusChip>{status || "NOT YET VALIDATED"}</StatusChip>
-      ) : (
-        <strong>{fmt(value)}%</strong>
-      )}
+      {value == null ? <StatusChip>{status || "NOT YET VALIDATED"}</StatusChip> : <strong>{fmt(value)}%</strong>}
     </div>
   );
 }
@@ -24,9 +20,7 @@ function ConfusionMatrix({ matrix }) {
         <thead>
           <tr>
             <th>Actual ↓ / Predicted →</th>
-            {matrix.labels.map((label) => (
-              <th key={label}>{titleCase(label)}</th>
-            ))}
+            {matrix.labels.map((label) => <th key={label}>{titleCase(label)}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -34,7 +28,7 @@ function ConfusionMatrix({ matrix }) {
             <tr key={label}>
               <th>{titleCase(label)}</th>
               {matrix.rows[rowIndex].map((value, colIndex) => (
-                <td key={`${label}-${matrix.labels[colIndex]}`}>{value}</td>
+                <td key={`${label}-${matrix.labels[colIndex]}`} className={rowIndex === colIndex ? "matrixHit" : ""}>{value}</td>
               ))}
             </tr>
           ))}
@@ -44,12 +38,21 @@ function ConfusionMatrix({ matrix }) {
   );
 }
 
+function StatCard({ label, value, warning = false }) {
+  return (
+    <article className="ffValidationStat">
+      <span>{label}</span>
+      <strong className={warning ? "warning" : ""}>{value ?? "—"}</strong>
+    </article>
+  );
+}
+
 export default function Validation({ summary, reload }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const metrics = summary?.evaluation || {};
   const metricStatus = metrics.status || "NOT YET VALIDATED";
-  const hasMetrics = metrics.sample_count > 0;
+  const hasMetrics = (metrics.sample_count || 0) > 0;
 
   async function saveRun() {
     setSaving(true);
@@ -66,183 +69,95 @@ export default function Validation({ summary, reload }) {
   }
 
   return (
-    <div className="featurePage">
-      <div className="pageIntro">
-        <span className="eyebrow">DATASET & VALIDATION</span>
-        <h1>Measure performance only from human-labelled inspections.</h1>
-        <p>
-          Public datasets support reference comparison. FreshFusion validation
-          metrics are derived only from comparable human ground-truth inspection
-          snapshots and remain preliminary until an independent held-out protocol
-          is completed.
-        </p>
+    <div className="featurePage validationFigmaPage">
+      <div className="pageIntro ffValidationIntro">
+        <span className="eyebrow">FRESHFUSION WORKSPACE</span>
+        <h1>Dataset & Validation</h1>
+        <p>Ground truth, frozen validation runs and transparent experimental metrics—no fabricated accuracy.</p>
         <div className="buttonRow">
-          <button className="secondary" onClick={reload}>
-            Refresh dataset status
-          </button>
-          <button
-            className="primary"
-            disabled={!summary || saving}
-            onClick={saveRun}
-          >
+          <button className="secondary" onClick={reload}>Refresh status</button>
+          <button className="primary" disabled={!summary || saving} onClick={saveRun}>
             {saving ? "Saving…" : "Save validation snapshot"}
           </button>
         </div>
       </div>
 
       {message && <div className="notice">{message}</div>}
-      {!summary && (
-        <div className="notice">
-          Backend required to inspect local reference files, labels and model
-          artifacts. No counts or results are assumed.
-        </div>
-      )}
+      {!summary && <div className="notice">Backend required. No validation counts or results are assumed.</div>}
 
-      <div className="twoPanels">
-        <Panel title="FreshFusion validation data">
-          <Facts
-            items={[
-              ["Labelled camera images", summary?.labelled_images],
-              [
-                "Human-labelled inspections",
-                summary?.human_labelled_inspections,
-              ],
-              [
-                "Ground-truth review records",
-                summary?.human_ground_truth_records,
-              ],
-              ["Comparable metric samples", metrics.sample_count],
-              [
-                "Represented classes",
-                metrics.represented_classes?.join(", ") || "None",
-              ],
-              [
-                "Model deployment",
-                summary ? titleCase(summary.model?.status) : "Unknown",
-              ],
-              [
-                "Reference index",
-                summary
-                  ? summary.reference_index?.ready
-                    ? "Available"
-                    : "Not built"
-                  : "Unknown",
-              ],
-              ["Indexed examples", summary?.reference_index?.samples],
-            ]}
-          />
-          <p className="footnote">{summary?.label_policy}</p>
-          <p className="footnote">{summary?.model?.note}</p>
-        </Panel>
+      <section className="ffValidationStats">
+        <StatCard label="HUMAN GT RECORDS" value={summary?.human_ground_truth_records} />
+        <StatCard label="LABELLED INSPECTIONS" value={summary?.human_labelled_inspections} />
+        <StatCard label="COMPARABLE SAMPLES" value={metrics.sample_count} />
+        <StatCard label="MODEL STATUS" value={summary ? titleCase(summary.model?.status).toUpperCase() : "UNKNOWN"} warning={summary?.model?.status !== "deployed"} />
+      </section>
 
-        <Panel title="Validation metrics" eyebrow="LATEST GROUND-TRUTH SNAPSHOTS">
+      <section className="ffValidationGrid">
+        <Panel title="Observational metrics" eyebrow="LATEST VALIDATION SNAPSHOT">
           <div className="validationStatusRow">
-            <StatusChip tone={hasMetrics ? "warning" : "neutral"}>
-              {metricStatus}
-            </StatusChip>
-            {metrics.protocol_ready && (
-              <StatusChip tone="good">MINIMUM DEMO COVERAGE REACHED</StatusChip>
-            )}
+            <StatusChip tone={hasMetrics ? "warning" : "neutral"}>{metricStatus}</StatusChip>
+            {metrics.protocol_ready && <StatusChip tone="good">MINIMUM DEMO COVERAGE REACHED</StatusChip>}
           </div>
           <div className="metricPlaceholders">
-            <Metric
-              name="Accuracy"
-              value={metrics.accuracy}
-              status={metricStatus}
-            />
-            <Metric
-              name="Macro Precision"
-              value={metrics.precision}
-              status={metricStatus}
-            />
-            <Metric
-              name="Macro Recall"
-              value={metrics.recall}
-              status={metricStatus}
-            />
+            <Metric name="Accuracy" value={metrics.accuracy} status={metricStatus} />
+            <Metric name="Macro Precision" value={metrics.precision} status={metricStatus} />
+            <Metric name="Macro Recall" value={metrics.recall} status={metricStatus} />
             <Metric name="Macro F1" value={metrics.f1} status={metricStatus} />
           </div>
-          <p className="footnote">
-            {metrics.note ||
-              "No held-out FreshFusion evaluation is available. Split by physical fruit/sample, not neighbouring camera frames."}
-          </p>
+          <p className="footnote">{metrics.note || "Metrics appear only after comparable human-ground-truth inspections exist."}</p>
         </Panel>
-      </div>
 
-      <Panel title="Confusion matrix" eyebrow="ACTUAL HUMAN LABEL → SYSTEM PREDICTION">
-        {hasMetrics ? (
-          <ConfusionMatrix matrix={metrics.confusion_matrix} />
-        ) : (
-          <p className="muted">
-            Add ground truth to conclusive inspections to generate a real matrix.
-          </p>
-        )}
-      </Panel>
+        <Panel title="Confusion matrix" eyebrow="ACTUAL HUMAN LABEL → SYSTEM PREDICTION">
+          {hasMetrics ? <ConfusionMatrix matrix={metrics.confusion_matrix} /> : (
+            <div className="emptyState">Add ground truth to conclusive inspections to generate a real matrix.</div>
+          )}
+        </Panel>
+      </section>
 
-      <Panel title="Per-class performance">
-        {hasMetrics ? (
-          <div className="classMetricGrid">
-            {Object.entries(metrics.per_class || {}).map(([label, values]) => (
-              <div className="classMetricCard" key={label}>
-                <span className="eyebrow">{titleCase(label)}</span>
-                <strong>{values.support ?? 0} samples</strong>
-                <small>Precision: {values.precision == null ? "—" : `${fmt(values.precision)}%`}</small>
-                <small>Recall: {values.recall == null ? "—" : `${fmt(values.recall)}%`}</small>
-                <small>F1: {values.f1 == null ? "—" : `${fmt(values.f1)}%`}</small>
-              </div>
-            ))}
+      <Panel title="Frozen snapshots keep the evidence trail auditable." eyebrow="VALIDATION RUNS" className="validationRunsPanel">
+        <div className="ffRunSummary">
+          <span>Current protocol</span>
+          <b>latest-ground-truth-per-inspection</b>
+          <StatusChip tone={hasMetrics ? "warning" : "neutral"}>{hasMetrics ? "PRELIMINARY" : "WAITING FOR DATA"}</StatusChip>
+        </div>
+        {summary?.latest_persisted_run ? (
+          <div className="ffValidationRunRow">
+            <b>{summary.latest_persisted_run.run_id}</b>
+            <span>{summary.latest_persisted_run.sample_count} comparable samples</span>
+            <span>{summary.latest_persisted_run.created_at}</span>
+            <StatusChip tone="warning">PRELIMINARY</StatusChip>
           </div>
         ) : (
-          <p className="muted">Per-class metrics appear after comparable ground-truth inspections exist.</p>
+          <p className="muted">No frozen validation run has been saved yet.</p>
         )}
       </Panel>
 
-      <div className="twoPanels">
-        {summary?.datasets?.map((dataset) => (
-          <Panel
-            key={dataset.id}
-            title={dataset.name}
-            eyebrow={titleCase(dataset.purpose)}
-          >
-            <Facts
-              items={[
-                ["License (source metadata)", dataset.license],
-                ["Supported reference fruits", dataset.supports.join(", ")],
-                [
-                  "Published classes",
-                  dataset.labels?.join(", ") || "Fruit identity classes",
-                ],
-              ]}
-            />
-            <p>{dataset.note}</p>
-            <a href={dataset.url} target="_blank" rel="noreferrer">
-              Open dataset source
-            </a>
-          </Panel>
-        ))}
-      </div>
+      <section className="ffValidationDetails">
+        <Panel title="Per-class performance" eyebrow="HUMAN LABELLED ONLY">
+          {hasMetrics ? (
+            <div className="classMetricGrid">
+              {Object.entries(metrics.per_class || {}).map(([label, values]) => (
+                <div className="classMetricCard" key={label}>
+                  <span className="eyebrow">{titleCase(label)}</span>
+                  <strong>{values.support ?? 0} samples</strong>
+                  <small>Precision: {values.precision == null ? "—" : `${fmt(values.precision)}%`}</small>
+                  <small>Recall: {values.recall == null ? "—" : `${fmt(values.recall)}%`}</small>
+                  <small>F1: {values.f1 == null ? "—" : `${fmt(values.f1)}%`}</small>
+                </div>
+              ))}
+            </div>
+          ) : <p className="muted">Per-class metrics appear after comparable ground-truth inspections exist.</p>}
+        </Panel>
 
-      <Panel title="Validation protocol">
-        <p>
-          One physical fruit inspection counts as one validation sample. The
-          latest human ground-truth review is compared with the decision snapshot
-          stored at review time. Multiple camera angles of the same fruit are not
-          counted as independent samples.
-        </p>
-        <p className="footnote">
-          A persisted validation run freezes the current records and metrics for
-          later comparison. Even when 20+ samples are available, the UI keeps
-          results labelled preliminary until an independent sample-level held-out
-          test protocol is performed.
-        </p>
-        {summary?.latest_persisted_run && (
-          <p className="footnote">
-            Latest saved run: {summary.latest_persisted_run.run_id} ·{" "}
-            {summary.latest_persisted_run.sample_count} samples ·{" "}
-            {summary.latest_persisted_run.created_at}
-          </p>
-        )}
-      </Panel>
+        <Panel title="Validation boundary" eyebrow="SCIENTIFIC GUARDRAIL">
+          <p>One physical fruit inspection counts as one validation sample. Multiple camera angles of the same fruit are not independent samples.</p>
+          <p className="footnote">Even after minimum demo coverage is reached, results remain preliminary until an independent sample-level held-out protocol is performed.</p>
+          <div className="chipRow">
+            <StatusChip>Reference index: {summary?.reference_index?.ready ? "Available" : "Not built"}</StatusChip>
+            <StatusChip>{summary?.reference_index?.samples ?? 0} indexed examples</StatusChip>
+          </div>
+        </Panel>
+      </section>
     </div>
   );
 }
