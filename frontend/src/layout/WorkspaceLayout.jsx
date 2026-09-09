@@ -1,11 +1,12 @@
 import {
-  LayoutDashboard,
-  ScanLine,
-  Microscope,
-  ListTree,
+  Bot,
   Database,
   History,
+  LayoutDashboard,
   Leaf,
+  Microscope,
+  ScanLine,
+  Settings2,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -14,9 +15,10 @@ const pages = [
   ["overview", "Overview", LayoutDashboard],
   ["inspection", "Live Inspection", ScanLine],
   ["investigation", "Investigation", Microscope],
-  ["evidence", "Evidence", ListTree],
+  ["ai", "AI Copilot", Bot],
   ["validation", "Dataset & Validation", Database],
-  ["history", "History", History],
+  ["history", "History & Evidence", History],
+  ["system", "System", Settings2],
 ];
 
 export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
