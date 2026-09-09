@@ -1,68 +1,116 @@
 import {
-  ArrowRight,
+  Bot,
   Camera,
-  Cpu,
-  Database,
   Plus,
   ScanSearch,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
-import { Panel, StatusChip } from "../../shared/Panel";
+import { StatusChip } from "../../shared/Panel";
+import { fmt, titleCase } from "../../shared/format";
 
-function signalState(ok, online) {
+function stateLabel(ok, online) {
   if (ok) return "Ready";
   return online ? "Waiting" : "Offline";
 }
 
+function MetricCard({ label, value, note, tone = "good" }) {
+  return (
+    <article className="ffMetricCard">
+      <div className="ffMetricHead">
+        <span>{label}</span>
+        <i className={`ffMetricDot ${tone}`} aria-hidden="true" />
+      </div>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </article>
+  );
+}
+
 export default function Overview({ session, onStart, navigate, validation }) {
-  const evidence = session.report?.evidence;
+  const report = session.report;
+  const evidence = report?.evidence;
+  const latestSensor = session.data?.sensors?.at(-1) || {};
+  const latestImage = session.data?.images?.[0] || null;
+  const vision = report?.analysts?.vision || {};
+  const multi = report?.analysts?.multiview || {};
+  const decision = report?.decision || {};
+  const critic = report?.critic || {};
+  const capturedViews = multi.views || [];
+  const fruit =
+    vision.identity?.fruit && vision.identity.fruit !== "Unknown"
+      ? vision.identity.fruit
+      : session.sample?.fruit_type && session.sample.fruit_type !== "Auto"
+        ? session.sample.fruit_type
+        : "Waiting";
+
   const signals = [
-    ["Camera evidence", evidence?.camera?.recent],
-    ["ESP32 telemetry", evidence?.sensors?.physical_present],
-    ["Reference index", validation?.reference_index?.ready],
+    ["Camera evidence", Boolean(evidence?.camera?.recent)],
+    ["ESP32 telemetry", Boolean(evidence?.sensors?.physical_present)],
+    ["Reference index", Boolean(validation?.reference_index?.ready)],
+    ["RAG context", Boolean(report)],
+  ];
+
+  const metricCards = [
+    [
+      "Temperature",
+      latestSensor.temperature == null ? "—" : `${fmt(latestSensor.temperature)} °C`,
+      latestSensor.temperature == null ? "Waiting for hardware" : "Latest hardware reading",
+      latestSensor.temperature == null ? "neutral" : "good",
+    ],
+    [
+      "Humidity",
+      latestSensor.humidity == null ? "—" : `${fmt(latestSensor.humidity)}% RH`,
+      latestSensor.humidity == null ? "Waiting for DHT11" : "DHT11 chamber state",
+      latestSensor.humidity == null ? "neutral" : "good",
+    ],
+    [
+      "MQ135 raw",
+      latestSensor.mq135_raw == null ? "—" : `${fmt(latestSensor.mq135_raw, 0)} ADC`,
+      "Uncalibrated relative signal",
+      latestSensor.mq135_raw == null ? "neutral" : "warning",
+    ],
+    ["Fruit identity", fruit, "Vision / selected sample", fruit === "Waiting" ? "neutral" : "good"],
+    [
+      "Assessment",
+      decision.verdict_ready ? titleCase(decision.label) : "More evidence",
+      decision.verdict_ready ? "Experimental assessment" : "Verdict currently locked",
+      decision.verdict_ready ? "good" : "warning",
+    ],
+  ];
+
+  const analystRows = [
+    ["Vision Analyst", "Surface + identity", vision.identity?.confidence == null ? "Waiting" : `${fmt(vision.identity.confidence, 0)}%`],
+    ["Sensor Analyst", "Temp / RH / MQ135", evidence?.sensors?.physical_present ? "Valid" : "Waiting"],
+    ["Reference Analyst", "Retrieved class context", report?.analysts?.reference?.index?.ready ? "Ready" : "Waiting"],
+    ["Multi-view Analyst", "Physical consistency", `${capturedViews.length} / ${multi.required_views ?? 3}`],
   ];
 
   return (
-    <div className="featurePage overviewPage">
-      <section className="overviewHero">
-        <div className="overviewHeroCopy">
-          <div className="heroKicker">
-            <Sparkles size={15} />
-            <span>Evidence-grounded multimodal inspection</span>
-          </div>
-          <span className="eyebrow">START HERE</span>
-          <h1>From a fruit to an evidence-backed assessment.</h1>
+    <div className="featurePage overviewPage ffOverviewPage">
+      <div className="ffPageHeading">
+        <span className="eyebrow">OVERVIEW</span>
+        <h1>FreshFusion Investigation Workspace</h1>
+      </div>
+
+      <section className="ffOverviewHero">
+        <div className="ffOverviewHeroCopy">
+          <span className="eyebrow">EVIDENCE-GROUNDED MULTIMODAL INSPECTION</span>
+          <h2>Inspect the fruit.<br />Challenge the evidence.</h2>
           <p>
-            FreshFusion combines phone vision, chamber telemetry, published
-            references and an evidence critic before it releases an experimental
-            freshness assessment.
+            Phone vision, chamber telemetry, reference retrieval and deterministic
+            critique before any experimental freshness assessment is released.
           </p>
-          <div className="heroActions">
-            <button
-              className="primary heroPrimary"
-              onClick={onStart}
-              disabled={session.busy || !session.online}
-            >
-              <Plus size={17} /> Start new inspection
+          <div className="buttonRow">
+            <button className="primary" onClick={onStart} disabled={session.busy || !session.online}>
+              <Plus size={16} /> New inspection
             </button>
-            <button
-              className="secondary heroSecondary"
-              onClick={() => navigate("investigation")}
-            >
-              <ScanSearch size={16} /> Explore investigation
+            <button className="secondary" onClick={() => navigate("investigation")}>
+              <ScanSearch size={15} /> Explore investigation
             </button>
-          </div>
-          <div className="heroTrustRow">
-            <span><ShieldCheck size={14} /> Deterministic gating</span>
-            <span>Human verification</span>
-            <span>Local Gemma explanation</span>
           </div>
         </div>
-
-        <div className="overviewHeroVisual" aria-label="FreshFusion system readiness">
-          <div className="heroVisualGlow" />
-          <div className="heroVisualHeader">
+        <div className="ffReadinessCard">
+          <div className="ffReadinessHead">
             <div>
               <span className="eyebrow">SYSTEM READINESS</span>
               <strong>{session.online ? "FreshFusion online" : "Backend required"}</strong>
@@ -71,23 +119,11 @@ export default function Overview({ session, onStart, navigate, validation }) {
               {session.online ? "CONNECTED" : "OFFLINE"}
             </StatusChip>
           </div>
-
-          <div className="signalOrbit">
-            <div className="orbitCore">
-              <span>FF</span>
-              <small>Investigation</small>
-            </div>
-            <div className="orbitRing orbitRingOne" />
-            <div className="orbitRing orbitRingTwo" />
-          </div>
-
-          <div className="heroSignalList">
+          <div className="ffReadinessRows">
             {signals.map(([label, ok]) => (
               <div key={label}>
                 <span>{label}</span>
-                <b className={ok ? "ready" : "waiting"}>
-                  {signalState(ok, session.online)}
-                </b>
+                <b className={ok ? "ready" : "waiting"}>{stateLabel(ok, session.online)}</b>
               </div>
             ))}
           </div>
@@ -95,95 +131,89 @@ export default function Overview({ session, onStart, navigate, validation }) {
       </section>
 
       {!session.online && (
-        <div className="notice premiumNotice">
-          <b>Explore the workflow now. Connect the backend to collect evidence.</b>
-          <p>
-            No demonstration measurements are generated. Run
-            <code>.\start_freshfusion.ps1</code> from the repository root for the
-            complete phone + ESP32 system.
-          </p>
+        <div className="notice ffInlineNotice">
+          No demonstration measurements are generated. Start the backend to collect real evidence.
         </div>
       )}
 
-      <div className="sourceGrid premiumSourceGrid">
-        {[
-          [Camera, "Phone camera", "Visual evidence", "Color, texture, defects and changed physical viewpoints", "cameraSource"],
-          [Cpu, "ESP32 sensors", "Environmental evidence", "Temperature, humidity and uncalibrated MQ135 raw response", "sensorSource"],
-          [Database, "Public reference", "Context evidence", "Local feature similarity against published reference classes", "referenceSourceCard"],
-        ].map(([Icon, title, eyebrow, note, className]) => (
-          <Panel key={title} title={title} eyebrow={eyebrow} className={`sourcePanel ${className}`}>
-            <div className="sourceIcon"><Icon size={22} /></div>
-            <p>{note}</p>
-          </Panel>
+      <section className="ffMetricGrid">
+        {metricCards.map(([label, value, note, tone]) => (
+          <MetricCard key={label} label={label} value={value} note={note} tone={tone} />
         ))}
-      </div>
+      </section>
 
-      <Panel
-        title="The investigation workflow"
-        eyebrow="HOW EVIDENCE BECOMES AN ASSESSMENT"
-        className="workflowPanel"
-      >
-        <div className="flowStages">
-          {[
-            ["01", "Intake", "One inspection per physical fruit."],
-            ["02", "Collect", "Changed views + fresh chamber readings."],
-            ["03", "Analyze", "Vision · Sensor · Reference · Multi-view"],
-            ["04", "Challenge", "Critic checks missing, stale and conflicting evidence."],
-            ["05", "Decide", "Deterministic fusion releases or blocks responsibly."],
-            ["06", "Verify", "Human accepts, disagrees or adds ground truth."],
-          ].map(([n, title, note], i) => (
-            <div className="flowStage" key={n}>
-              <span>{n}</span>
-              <h3>{title}</h3>
-              <p>{note}</p>
-              {i < 5 && <ArrowRight size={16} />}
+      <section className="ffOverviewMainGrid">
+        <article className="workspacePanel ffVisualCard">
+          <span className="eyebrow">VISUAL EVIDENCE</span>
+          <h2>What the camera sees now</h2>
+          <div className="ffVisualBody">
+            <div className="ffCameraPreview">
+              {latestImage?.url ? (
+                <img src={latestImage.url} alt="Latest fruit evidence" />
+              ) : (
+                <div className="ffCameraEmpty">
+                  <Camera size={28} />
+                  <b>Fruit frame preview</b>
+                  <span>Capture a real view from the phone camera.</span>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-        <p className="footnote">
-          Core decision modules remain deterministic. Gemma is used only for
-          structured human-readable explanation, not for the numerical verdict.
-        </p>
-      </Panel>
+            <div className="ffViewList">
+              {["front", "left", "right", "back", "top"].map((view) => {
+                const captured = capturedViews.includes(view);
+                return (
+                  <div key={view} className={captured ? "captured" : "needed"}>
+                    <b>{titleCase(view)}</b>
+                    <span>{captured ? "captured" : "needed"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </article>
 
-      <div className="twoPanels overviewBottomGrid">
-        <Panel title="Current prototype status" eyebrow="LIVE SOURCES" className="statusPanel">
-          <div className="connectionList">
-            {[
-              ["Backend", session.online],
-              ["Camera · selected inspection", evidence?.camera?.recent],
-              ["ESP32 · recent physical data", evidence?.sensors?.physical_present],
-              ["Reference index", validation?.reference_index?.ready],
-            ].map(([label, ok]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <StatusChip tone={ok ? "good" : "neutral"}>
-                  {ok
-                    ? "Available"
-                    : session.online
-                      ? "Waiting / unavailable"
-                      : "Backend required"}
-                </StatusChip>
+        <article className="workspacePanel ffAnalystSummary">
+          <span className="eyebrow">INTELLIGENCE LAYERS</span>
+          <h2>Independent analysis before fusion</h2>
+          <div className="ffAnalystRows">
+            {analystRows.map(([name, note, value]) => (
+              <div key={name}>
+                <span><b>{name}</b><small>{note}</small></span>
+                <strong>{value}</strong>
               </div>
             ))}
           </div>
-        </Panel>
+        </article>
+      </section>
 
-        <Panel title="Prototype scope" eyebrow="SUPPORTED NOW" className="scopePanel">
-          <div className="chipRow">
-            <StatusChip>Apple</StatusChip>
-            <StatusChip>Banana</StatusChip>
-            <StatusChip tone="warning">Experimental prototype</StatusChip>
+      <section className="ffOverviewBottomGrid">
+        <article className="workspacePanel ffCriticSummary">
+          <div>
+            <span className="eyebrow">EVIDENCE CRITIC</span>
+            <h2>{critic.blocking ? "Verdict blocked — more physical evidence required" : "Evidence gate ready for assessment"}</h2>
+            <p>{critic.missing_evidence?.length ? `Missing: ${critic.missing_evidence.join(" · ")}` : critic.warnings?.join(" · ") || "No recorded blocker for the selected inspection."}</p>
           </div>
-          <p>
-            Identity uses OpenCV rules and reference features. MQ135 is raw
-            relative evidence, reference similarity is not accuracy, and
-            monocular physical verification remains probabilistic.
-          </p>
-          <button className="secondary" onClick={() => navigate("investigation")}>
-            Explore the analysts <ArrowRight size={15} />
-          </button>
-        </Panel>
+          <StatusChip tone={critic.blocking ? "warning" : "good"}>
+            {critic.blocking ? "MORE EVIDENCE" : "GATE PASSED"}
+          </StatusChip>
+        </article>
+
+        <button className="ffCopilotTeaser" onClick={() => navigate("ai")}>
+          <div>
+            <Bot size={18} />
+            <b>FreshFusion AI Copilot</b>
+          </div>
+          <p>Ask why a verdict is locked, what evidence is missing, or what the sensors contributed.</p>
+          <div className="ffCopilotBadges">
+            <span>Gemma 3</span><span>Ollama local</span><span>RAG enabled</span>
+          </div>
+        </button>
+      </section>
+
+      <div className="ffScopeNote">
+        <ShieldCheck size={15} />
+        <span>Experimental prototype · MQ135 remains raw/relative · Gemma explains evidence but does not decide the verdict.</span>
+        <button className="textButton" onClick={() => navigate("system")}>System boundaries <ArrowRight size={13} /></button>
       </div>
     </div>
   );
