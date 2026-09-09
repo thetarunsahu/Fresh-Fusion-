@@ -1,12 +1,27 @@
 export const API_ROOT = import.meta.env.VITE_API_ROOT || window.location.origin;
 export const API = `${API_ROOT}/api/v1`;
+export const AUTH_TOKEN_KEY = "freshfusion.auth.token";
+
+export const getAuthToken = () => localStorage.getItem(AUTH_TOKEN_KEY);
+export const setAuthToken = (token) => {
+  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+};
+export const clearAuthToken = () => localStorage.removeItem(AUTH_TOKEN_KEY);
 
 async function json(url, options = {}) {
   const { timeoutMs = 30000, ...fetchOptions } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const token = getAuthToken();
+  const headers = new Headers(fetchOptions.headers || {});
+  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   try {
-    const res = await fetch(url, { ...fetchOptions, signal: controller.signal });
+    const res = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    });
     if (!res.ok) {
       const body = await res.text();
       let detail;
@@ -14,6 +29,9 @@ async function json(url, options = {}) {
         detail = JSON.parse(body).detail;
       } catch {
         /* HTTP text response */
+      }
+      if (res.status === 401 && !url.endsWith("/auth/login") && !url.endsWith("/auth/register")) {
+        clearAuthToken();
       }
       throw new Error(
         typeof detail === "string"
@@ -26,6 +44,20 @@ async function json(url, options = {}) {
     clearTimeout(timer);
   }
 }
+
+export const login = (email, password) =>
+  json(`${API}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+export const register = (payload) =>
+  json(`${API}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+export const authMe = () => json(`${API}/auth/me`);
 
 export const health = () => json(`${API}/health`);
 export const ollamaHealth = () => json(`${API}/ai/ollama/health`);
