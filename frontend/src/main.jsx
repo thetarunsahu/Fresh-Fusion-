@@ -6,6 +6,7 @@ import "./auto.css";
 import "./validation.css";
 import "./figma-ui.css";
 import "./figma-ui-extensions.css";
+import "./figma-ui-portal.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
