@@ -37,7 +37,17 @@ class InvestigationTests(unittest.TestCase):
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
         self.client = TestClient(app)
-        self.sample = self.client.post('/api/v1/samples', json={'fruit_type': 'Apple'}).json()['sample_id']
+        auth = self.client.post('/api/v1/auth/register', json={
+            'email': 'regression@freshfusion.local',
+            'password': 'FreshFusionTest123!',
+            'full_name': 'FreshFusion Regression',
+            'role': 'operator',
+        })
+        self.assertEqual(auth.status_code, 201, auth.text)
+        self.client.headers.update({'Authorization': f"Bearer {auth.json()['access_token']}"})
+        sample = self.client.post('/api/v1/samples', json={'fruit_type': 'Apple'})
+        self.assertEqual(sample.status_code, 201, sample.text)
+        self.sample = sample.json()['sample_id']
 
     def tearDown(self):
         self.client.close()
