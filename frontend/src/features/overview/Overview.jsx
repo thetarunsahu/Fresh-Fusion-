@@ -1,4 +1,5 @@
 import {
+  ArrowRight,
   Bot,
   Camera,
   Plus,
