@@ -3,7 +3,7 @@ import socket
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .api import datasets, external, images, investigation, samples, sensors
+from .api import auth, datasets, external, images, investigation, samples, sensors
 from .config import CORS_ORIGINS, UPLOAD_DIR
 from .database import Base, engine
 from .realtime import manager
@@ -11,8 +11,8 @@ from .realtime import manager
 Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="FreshFusion API",
-    version="2.3.0",
-    description="Multimodal fruit intelligence backend with automatic Apple/Banana identity, ESP32 telemetry, continuous phone vision, public dataset references, computer vision and fusion scoring.",
+    version="2.4.0",
+    description="Multimodal fruit intelligence backend with user authentication, automatic Apple/Banana identity, ESP32 telemetry, continuous phone vision, public dataset references, computer vision and fusion scoring.",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(samples.router, prefix="/api/v1")
 app.include_router(sensors.router, prefix="/api/v1")
 app.include_router(images.router, prefix="/api/v1")
@@ -59,13 +60,18 @@ def health():
     return {
         "status": "online",
         "service": "FreshFusion",
-        "version": "2.3.0",
+        "version": "2.4.0",
         "lan_ip": lan_ip,
         "phone_dashboard": phone_dashboard,
         "phone_mode": phone_mode,
         "camera_secure": camera_secure,
         "backend_port": backend_port,
         "frontend_port": frontend_port,
+        "authentication": {
+            "mode": "jwt",
+            "user_roles": ["admin", "operator", "reviewer"],
+            "device_authentication": "planned",
+        },
         "esp32_endpoint": f"http://{lan_ip}:{backend_port}/api/v1/sensors/readings",
         "fruit_identity": {
             "mode": "auto",
