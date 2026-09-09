@@ -1,11 +1,8 @@
 """Local Ollama/Gemma client for FreshFusion.
 
-This module is intentionally optional: FreshFusion's core verdict must continue to
-work from CV, sensor evidence, reference matching, physical validation, and the
-deterministic fusion/critic path even when Ollama is unavailable.
-
-Gemma is used only for evidence-grounded explanations and summaries. It is not
-allowed to invent freshness scores, calibrated gas values, or validation metrics.
+FreshFusion's core verdict remains independent of Ollama. Gemma may explain or
+answer questions about already-computed evidence, but it cannot unlock, replace,
+or invent the deterministic assessment.
 """
 
 from __future__ import annotations
@@ -35,13 +32,12 @@ class OllamaClient:
         self.timeout_seconds = timeout_seconds
 
     async def health(self) -> dict[str, Any]:
-        """Return availability without making Ollama a hard dependency."""
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 response = await client.get(f"{self.base_url}/api/tags")
                 response.raise_for_status()
                 payload = response.json()
-        except Exception as exc:  # Ollama is optional by design.
+        except Exception as exc:
             return {
                 "available": False,
                 "model": self.model,
@@ -62,22 +58,31 @@ class OllamaClient:
             "base_url": self.base_url,
         }
 
-    async def explain(self, evidence: dict[str, Any]) -> dict[str, Any]:
-        """Create a structured, evidence-grounded explanation with Gemma.
-
-        The caller should pass already-computed evidence. Gemma may summarize and
-        point out contradictions/missing evidence, but it must not manufacture a
-        final numeric freshness score.
-        """
+    async def explain(
+        self,
+        evidence: dict[str, Any],
+        question: str | None = None,
+    ) -> dict[str, Any]:
+        """Explain supplied evidence or answer one evidence-grounded question."""
         system_prompt = (
             "You are the FreshFusion evidence explainer. Use ONLY the supplied "
-            "evidence. Never invent sensor values, calibration, accuracy, dataset "
-            "probabilities, or food-safety claims. If evidence is insufficient, "
-            "say so. Return valid JSON with keys: summary, supporting_evidence, "
-            "contradictions, missing_evidence, recommended_next_step."
+            "FreshFusion evidence. Never invent sensor values, calibration, accuracy, "
+            "dataset probabilities, food-safety claims, or a freshness verdict that "
+            "is not present in the deterministic decision. If evidence is missing or "
+            "contradictory, state that clearly. The deterministic critic/fusion result "
+            "is authoritative. Return valid JSON with keys: summary, "
+            "supporting_evidence, contradictions, missing_evidence, "
+            "recommended_next_step."
+        )
+        user_question = (question or "").strip()
+        question_block = (
+            f"\n\nUSER QUESTION:\n{user_question}"
+            if user_question
+            else "\n\nTASK:\nExplain the current evidence and what should happen next."
         )
         prompt = (
-            f"{system_prompt}\n\n"
+            f"{system_prompt}"
+            f"{question_block}\n\n"
             "FRESHFUSION EVIDENCE JSON:\n"
             f"{json.dumps(evidence, ensure_ascii=False, default=str)}"
         )
@@ -110,7 +115,6 @@ class OllamaClient:
                 "recommended_next_step": "Review deterministic FreshFusion evidence.",
             }
 
-        # Normalize the contract so the frontend never depends on arbitrary LLM keys.
         return {
             "summary": str(result.get("summary") or "Evidence explanation unavailable."),
             "supporting_evidence": list(result.get("supporting_evidence") or []),
@@ -120,6 +124,7 @@ class OllamaClient:
                 result.get("recommended_next_step")
                 or "Review deterministic FreshFusion evidence."
             ),
+            "question": user_question or None,
             "model": self.model,
             "role": "explanation_only",
         }
