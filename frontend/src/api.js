@@ -88,11 +88,15 @@ export const bundle = async (id) => {
 };
 export const investigation = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/investigation`);
-export const explainInvestigation = (id) =>
-  json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain`, {
+export const explainInvestigation = (id, question = "") => {
+  const query = question.trim()
+    ? `?question=${encodeURIComponent(question.trim())}`
+    : "";
+  return json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain${query}`, {
     method: "POST",
     timeoutMs: 90000,
   });
+};
 export const saveInvestigationSnapshot = (id, trigger = "manual") =>
   json(
     `${API}/samples/${encodeURIComponent(id)}/investigation/snapshot?trigger=${encodeURIComponent(trigger)}`,
