@@ -14,7 +14,7 @@ from ..services.investigation_core.evidence import sample_info, verification_inf
 
 router = APIRouter(prefix="/samples", tags=["samples"])
 
-@router.post("", response_model=SampleOut)
+@router.post("", response_model=SampleOut, status_code=201)
 def create_sample(
     payload: SampleCreate,
     db: Session = Depends(get_db),
