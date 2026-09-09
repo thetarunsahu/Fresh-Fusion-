@@ -72,8 +72,6 @@ function Get-LanIp {
 }
 
 function Test-PythonDependencies([string]$PythonPath) {
-    # Do not import a missing package directly here: Windows PowerShell can turn
-    # Python stderr into a terminating ErrorRecord when ErrorActionPreference is Stop.
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -89,11 +87,6 @@ function Install-BackendDependencies([string]$PythonPath) {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-
-        # Native command stdout must be sent directly to the host. If it is left
-        # on PowerShell's success stream, callers such as
-        #   $venvPython = Ensure-PythonEnvironment
-        # receive the pip log lines together with the python.exe path.
         & $PythonPath -m pip install --upgrade pip 2>&1 | Out-Host
         $pipUpgradeExit = $LASTEXITCODE
         if ($pipUpgradeExit -ne 0) { throw 'pip upgrade failed.' }
@@ -133,7 +126,6 @@ function Ensure-PythonEnvironment {
         throw 'Backend dependencies are still incomplete after installation.'
     }
 
-    # Keep this function's success output deliberately limited to one value.
     return [string]$venvPython
 }
 
@@ -183,6 +175,62 @@ function Ensure-FrontendEnvironment {
     }
 }
 
+function Get-OllamaTags {
+    try {
+        return Invoke-RestMethod -Method Get -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 3
+    } catch {
+        return $null
+    }
+}
+
+function Ensure-OllamaRuntime {
+    $model = if ($env:FRESHFUSION_OLLAMA_MODEL) { $env:FRESHFUSION_OLLAMA_MODEL } else { 'gemma3:4b' }
+    $tags = Get-OllamaTags
+
+    if ($null -eq $tags) {
+        $ollama = Get-Command ollama.exe -ErrorAction SilentlyContinue
+        if (-not $ollama) {
+            Write-Host '[ai] Ollama is not installed. Core FreshFusion will continue without the AI Copilot.' -ForegroundColor Yellow
+            return $false
+        }
+
+        Write-Host '[ai] Starting installed Ollama runtime...' -ForegroundColor Cyan
+        try {
+            Start-Process -FilePath $ollama.Source -ArgumentList @('serve') -WindowStyle Hidden | Out-Null
+        } catch {
+            Write-Host "[ai] Could not start Ollama: $($_.Exception.Message)" -ForegroundColor Yellow
+            return $false
+        }
+
+        $deadline = (Get-Date).AddSeconds(15)
+        while ((Get-Date) -lt $deadline -and $null -eq $tags) {
+            Start-Sleep -Milliseconds 500
+            $tags = Get-OllamaTags
+        }
+    }
+
+    if ($null -eq $tags) {
+        Write-Host '[ai] Ollama API is unavailable. Core verdict remains available; AI Copilot will stay disabled.' -ForegroundColor Yellow
+        return $false
+    }
+
+    $installed = $false
+    foreach ($item in @($tags.models)) {
+        if ($item.name -eq $model -or $item.model -eq $model) {
+            $installed = $true
+            break
+        }
+    }
+
+    if (-not $installed) {
+        Write-Host "[ai] Ollama is online, but '$model' is missing. Run .\setup_ollama.ps1 once; the launcher will never re-download it automatically." -ForegroundColor Yellow
+        return $false
+    }
+
+    Write-Host "[ai] Ollama + $model ready. Existing local model reused; no download required." -ForegroundColor DarkGreen
+    return $true
+}
+
 function Ensure-Cloudflared {
     $exe = Join-Path $ToolsDir 'cloudflared.exe'
     if (Test-Path $exe) { return $exe }
@@ -227,6 +275,7 @@ try {
     $venvPython = Ensure-PythonEnvironment
     Invoke-DatabaseMigration $venvPython
     Ensure-FrontendEnvironment
+    $aiReady = Ensure-OllamaRuntime
 
     $frontendOut = Join-Path $RuntimeDir 'frontend.out.log'
     $frontendErr = Join-Path $RuntimeDir 'frontend.err.log'
@@ -327,6 +376,7 @@ try {
     }
     Write-Host "Backend health   : http://localhost:$BackendPort/api/v1/health" -ForegroundColor White
     Write-Host "Ollama health    : http://localhost:$BackendPort/api/v1/ai/ollama/health" -ForegroundColor White
+    Write-Host "AI Copilot       : $(if ($aiReady) { 'Gemma ready' } else { 'optional / unavailable' })" -ForegroundColor $(if ($aiReady) { 'Green' } else { 'Yellow' })
     Write-Host "ESP32 API        : $esp32Url" -ForegroundColor White
     Write-Host ''
     Write-Host 'FreshFusion automatically moved away from any busy ports.' -ForegroundColor Green
