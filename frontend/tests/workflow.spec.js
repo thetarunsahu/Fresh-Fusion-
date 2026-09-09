@@ -101,6 +101,11 @@ async function fixtures(page, overrides = {}) {
       payload = {
         status: "online",
         phone_dashboard: "http://127.0.0.1:5188/phone.html",
+        phone_mode: "lan-fallback",
+        backend_port: 8000,
+        frontend_port: 5188,
+        esp32_endpoint: "http://127.0.0.1:8000/api/v1/sensors/readings",
+        authentication: { mode: "jwt", device_authentication: "planned" },
       };
     else if (path === "/api/v1/samples/active") payload = overrides.active || b;
     else if (path === "/api/v1/samples") payload = [b, a];
@@ -158,9 +163,7 @@ test("landing and login remain public while workspace is authenticated", async (
   await expect(page.getByRole("heading", { name: "Sign in to FreshFusion" })).toBeVisible();
 });
 
-test("authenticated frontend-only workspace exposes all six investigation pages without fabricated results", async ({
-  page,
-}) => {
+test("authenticated workspace exposes final seven protected pages without fabricated results", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await authenticate(page);
@@ -174,57 +177,38 @@ test("authenticated frontend-only workspace exposes all six investigation pages 
   });
   await page.goto("/#overview");
   await expect(
-    page.getByRole("heading", {
-      name: "From a fruit to an evidence-backed assessment.",
-    }),
+    page.getByRole("heading", { name: "From a fruit to an evidence-backed assessment." }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start new inspection" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Start new inspection" })).toBeDisabled();
   for (const name of [
     "Live Inspection",
     "Investigation",
-    "Evidence",
+    "AI Copilot",
     "Dataset & Validation",
-    "History",
+    "History & Evidence",
+    "System",
     "Overview",
   ]) {
-    await page
-      .getByRole("navigation")
-      .getByRole("button", { name, exact: true })
-      .click();
+    await page.getByRole("navigation").getByRole("button", { name, exact: true }).click();
     await expect(
       page.getByRole("navigation").getByRole("button", { name, exact: true }),
     ).toHaveAttribute("aria-current", "page");
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBeTruthy();
-  await page.screenshot({
-    path: test.info().outputPath("overview-mobile.png"),
-    fullPage: true,
-  });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: test.info().outputPath("overview-mobile.png"), fullPage: true });
   expect(errors).toEqual([]);
 });
 
-test("history selection survives polling, late responses and disposed WebSockets", async ({
-  page,
-}) => {
-  let hold = false,
-    release,
-    requested = false;
+test("history selection survives polling, late responses and disposed WebSockets", async ({ page }) => {
+  let hold = false, release, requested = false;
   const wait = new Promise((resolve) => (release = resolve));
   const { sockets } = await fixtures(page, {
     handle: async (route, path) => {
       if (hold && path === `/api/v1/samples/${b.sample_id}/bundle`) {
         requested = true;
         await wait;
-        await route.fulfill({
-          json: { sample: b, sensors: [], images: [], fusion: emptyFusion },
-        });
+        await route.fulfill({ json: { sample: b, sensors: [], images: [], fusion: emptyFusion } });
         return true;
       }
       return false;
@@ -233,18 +217,11 @@ test("history selection survives polling, late responses and disposed WebSockets
   await page.goto("/#overview");
   await expect(page.locator(".selectedInspection")).toContainText(b.sample_id);
   await expect.poll(() => sockets.length).toBeGreaterThan(0);
-  const countB = sockets.filter((socket) =>
-    socket.url().includes(b.sample_id),
-  ).length;
+  const countB = sockets.filter((socket) => socket.url().includes(b.sample_id)).length;
   hold = true;
-  sockets
-    .find((socket) => socket.url().includes(b.sample_id))
-    .send(JSON.stringify({ type: "sensor", data: {} }));
+  sockets.find((socket) => socket.url().includes(b.sample_id)).send(JSON.stringify({ type: "sensor", data: {} }));
   await expect.poll(() => requested).toBeTruthy();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "History", exact: true })
-    .click();
+  await page.getByRole("navigation").getByRole("button", { name: "History & Evidence", exact: true }).click();
   await page
     .locator(".historyGrid .workspacePanel")
     .filter({ hasText: a.sample_id })
@@ -255,52 +232,30 @@ test("history selection survives polling, late responses and disposed WebSockets
   await page.waitForTimeout(5600);
   await expect(page.locator(".selectedInspection")).toContainText(a.sample_id);
   await expect(page.locator(".captureBanner")).toContainText(b.sample_id);
-  expect(
-    sockets.filter((socket) => socket.url().includes(b.sample_id)).length,
-  ).toBe(countB);
-  await expect(
-    page.getByRole("heading", { name: "Vision Analyst", exact: true }),
-  ).toBeVisible();
+  expect(sockets.filter((socket) => socket.url().includes(b.sample_id)).length).toBe(countB);
+  await expect(page.getByRole("heading", { name: "Vision Analyst", exact: true })).toBeVisible();
 });
 
-test("human ground truth persists separately while the verdict stays locked", async ({
-  page,
-}) => {
+test("human ground truth persists separately while the verdict stays locked", async ({ page }) => {
   const { reviews } = await fixtures(page);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/#investigation");
-  await expect(
-    page.getByRole("button", { name: "Accept system assessment" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Accept system assessment" })).toBeDisabled();
   await page.getByLabel("Observed ground truth").selectOption("ripe");
-  await page
-    .getByLabel("Observation notes")
-    .fill("Browser contract test observation");
+  await page.getByLabel("Observation notes").fill("Browser contract test observation");
   await page.getByRole("button", { name: "Add ground truth" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Human observation saved",
-  );
+  await expect(page.getByRole("status")).toContainText("Human observation saved");
   expect(reviews[0].ground_truth).toBe("ripe");
   await expect(page.getByText("VERDICT LOCKED", { exact: true })).toBeVisible();
   await expect(page.locator(".assessmentScore strong")).toHaveText("—");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Dataset & Validation", exact: true })
-    .click();
-  await expect(
-    page.getByText("NOT YET VALIDATED", { exact: true }),
-  ).toHaveCount(5);
-  await page.screenshot({
-    path: test.info().outputPath("validation-desktop.png"),
-    fullPage: true,
-  });
+  await page.getByRole("navigation").getByRole("button", { name: "Dataset & Validation", exact: true }).click();
+  await expect(page.getByText("NOT YET VALIDATED", { exact: true })).toHaveCount(5);
+  await page.screenshot({ path: test.info().outputPath("validation-desktop.png"), fullPage: true });
   expect(errors).toEqual([]);
 });
 
-test("phone pauses when the chamber target changes and explicitly re-pairs", async ({
-  page,
-}) => {
+test("phone pauses when the chamber target changes and explicitly re-pairs", async ({ page }) => {
   let active = a;
   const { frames } = await fixtures(page, {
     handle: async (route, path) => {
@@ -314,24 +269,14 @@ test("phone pauses when the chamber target changes and explicitly re-pairs", asy
   await page.goto(`/phone.html?sample_id=${a.sample_id}`);
   await expect.poll(() => frames.length, { timeout: 15000 }).toBeGreaterThan(0);
   active = b;
-  await expect(
-    page.getByRole("button", { name: "Pair with active inspection" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start camera", exact: true }),
-  ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Pair with active inspection" })
-    .click();
-  await expect
-    .poll(() => frames.at(-1)?.sampleId, { timeout: 15000 })
-    .toBe(b.sample_id);
+  await expect(page.getByRole("button", { name: "Pair with active inspection" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start camera", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Pair with active inspection" }).click();
+  await expect.poll(() => frames.at(-1)?.sampleId, { timeout: 15000 }).toBe(b.sample_id);
   await expect(page).toHaveURL(new RegExp(b.sample_id));
 });
 
-test("phone uploads current views and labels after background resume", async ({
-  page,
-}) => {
+test("phone uploads current views and labels after background resume", async ({ page }) => {
   const { frames } = await fixtures(page, { active: a });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -343,26 +288,17 @@ test("phone uploads current views and labels after background resume", async ({
   await expect.poll(() => frames.at(-1)?.view).toBe("left");
   expect(frames.at(-1).truth).toBe("ripe");
   await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      get: () => true,
-    });
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await page.getByRole("button", { name: "back", exact: true }).click();
   await page.getByLabel("Dataset label (optional)").selectOption("overripe");
   await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      get: () => false,
-    });
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => frames.at(-1)?.view).toBe("back");
-  expect(frames.at(-1)).toMatchObject({
-    sampleId: a.sample_id,
-    truth: "overripe",
-  });
+  expect(frames.at(-1)).toMatchObject({ sampleId: a.sample_id, truth: "overripe" });
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   const count = frames.length;
   await page.waitForTimeout(3000);
