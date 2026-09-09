@@ -1,6 +1,15 @@
 // Browser/API contract fixtures only. No demo measurements are shipped in the UI.
 import { test, expect } from "@playwright/test";
 
+const authUser = {
+  id: 1,
+  email: "tester@freshfusion.local",
+  full_name: "FreshFusion Tester",
+  role: "admin",
+  is_active: true,
+  created_at: "2026-09-01T09:00:00+00:00",
+  last_login_at: null,
+};
 const a = {
   sample_id: "APP-TEST-A",
   fruit_type: "Apple",
@@ -68,10 +77,17 @@ const reportFor = (sample) => ({
   human_verifications: [],
 });
 
+async function authenticate(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem("freshfusion.auth.token", "playwright-test-token");
+  });
+}
+
 async function fixtures(page, overrides = {}) {
   const frames = [];
   const sockets = [];
   const reviews = [];
+  await authenticate(page);
   await page.routeWebSocket("**/ws/live/**", (socket) => sockets.push(socket));
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -80,7 +96,8 @@ async function fixtures(page, overrides = {}) {
     let payload;
     const id = path.split("/")[4];
     const sample = id === a.sample_id ? a : b;
-    if (path.endsWith("/health"))
+    if (path === "/api/v1/auth/me") payload = authUser;
+    else if (path.endsWith("/health"))
       payload = {
         status: "online",
         phone_dashboard: "http://127.0.0.1:5188/phone.html",
@@ -129,25 +146,37 @@ async function fixtures(page, overrides = {}) {
   return { frames, sockets, reviews };
 }
 
-test("frontend-only startup teaches all six pages without fabricated results", async ({
+test("landing and login remain public while workspace is authenticated", async ({ page }) => {
+  await page.route("**/api/v1/**", (route) =>
+    route.fulfill({ status: 503, json: { detail: "Backend unavailable" } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Inspect the fruit/ })).toBeVisible();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to FreshFusion" })).toBeVisible();
+  await page.goto("/#overview");
+  await expect(page.getByRole("heading", { name: "Sign in to FreshFusion" })).toBeVisible();
+});
+
+test("authenticated frontend-only workspace exposes all six investigation pages without fabricated results", async ({
   page,
 }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
+  await authenticate(page);
+  await page.route("**/api/v1/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/v1/auth/me") return route.fulfill({ json: authUser });
+    return route.fulfill({
       status: 503,
       json: { detail: "Backend intentionally unavailable" },
-    }),
-  );
-  await page.goto("/");
+    });
+  });
+  await page.goto("/#overview");
   await expect(
     page.getByRole("heading", {
       name: "From a fruit to an evidence-backed assessment.",
     }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Explore the workflow now.", { exact: false }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Start new inspection" }),
@@ -201,7 +230,7 @@ test("history selection survives polling, late responses and disposed WebSockets
       return false;
     },
   });
-  await page.goto("/");
+  await page.goto("/#overview");
   await expect(page.locator(".selectedInspection")).toContainText(b.sample_id);
   await expect.poll(() => sockets.length).toBeGreaterThan(0);
   const countB = sockets.filter((socket) =>
