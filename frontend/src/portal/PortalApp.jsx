@@ -48,6 +48,14 @@ export default function PortalApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (user && page === "login") {
+      location.hash = "overview";
+      setPage("overview");
+      window.scrollTo(0, 0);
+    }
+  }, [user, page]);
+
   const onAuthenticated = (nextUser) => {
     setUser(nextUser);
     navigate("overview");
@@ -72,8 +80,13 @@ export default function PortalApp() {
   if (page === "home") return <Landing user={user} navigate={navigate} />;
   if (page === "login") {
     if (user) {
-      navigate("overview");
-      return null;
+      return (
+        <div className="sessionSplash">
+          <div className="sessionSpinner" />
+          <b>Opening FreshFusion workspace</b>
+          <span>Your authenticated session is ready…</span>
+        </div>
+      );
     }
     return <AuthPage onAuthenticated={onAuthenticated} navigate={navigate} />;
   }
