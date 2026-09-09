@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bot,
   Database,
@@ -26,9 +26,21 @@ export default function AICopilot({ session }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const cameraRecent = report?.evidence?.camera?.recent === true;
+  const physicalSensorRecent = report?.evidence?.sensors?.physical_present === true;
+  const hasLiveEvidence = cameraRecent || physicalSensorRecent;
+  const canAsk = Boolean(session.sample?.sample_id && report && hasLiveEvidence && !busy);
+
+  useEffect(() => {
+    setQuestion("");
+    setMessages([]);
+    setError("");
+  }, [session.sample?.sample_id]);
+
   const sources = [
     ["Current sample evidence", Boolean(report?.evidence), FileSearch],
-    ["Sensor telemetry", Boolean(report?.evidence?.sensors?.latest), RadioTower],
+    ["Recent phone camera", cameraRecent, FileSearch],
+    ["Recent hardware telemetry", physicalSensorRecent, RadioTower],
     ["Reference context", Boolean(report?.analysts?.reference), Database],
     ["Human / inspection history", Boolean(report?.human_verifications?.length || report?.timeline?.length), History],
   ];
@@ -36,7 +48,7 @@ export default function AICopilot({ session }) {
 
   async function ask(text = question) {
     const prompt = text.trim();
-    if (!prompt || !session.sample?.sample_id || busy) return;
+    if (!prompt || !canAsk) return;
     setQuestion("");
     setBusy(true);
     setError("");
@@ -47,7 +59,7 @@ export default function AICopilot({ session }) {
         throw new Error(
           response.status === "model-not-installed"
             ? "Gemma is not installed in Ollama."
-            : "Local Ollama is unavailable. The deterministic verdict remains unaffected.",
+            : "Local Ollama is unavailable. Start Ollama, then retry. The deterministic verdict remains unaffected.",
         );
       }
       setMessages((current) => [
@@ -85,7 +97,7 @@ export default function AICopilot({ session }) {
         <div className="chipRow">
           <StatusChip tone="good">Gemma 3</StatusChip>
           <StatusChip>Ollama local</StatusChip>
-          <StatusChip tone="good">RAG enabled</StatusChip>
+          <StatusChip tone={hasLiveEvidence ? "good" : "warning"}>{hasLiveEvidence ? "Live evidence ready" : "Live evidence required"}</StatusChip>
           <StatusChip>Explanation only</StatusChip>
         </div>
         <span>{availableCount} / {sources.length} evidence groups available</span>
@@ -97,8 +109,12 @@ export default function AICopilot({ session }) {
             {!messages.length && (
               <div className="ffChatWelcome">
                 <span><Bot size={22} /></span>
-                <h3>Ask about the selected inspection.</h3>
-                <p>Questions are sent with the current evidence snapshot, analyst outputs, critic state and deterministic decision.</p>
+                <h3>{hasLiveEvidence ? "Ask about the selected inspection." : "Collect live evidence first."}</h3>
+                <p>
+                  {hasLiveEvidence
+                    ? "Questions are sent with the current evidence snapshot, analyst outputs, critic state and deterministic decision."
+                    : "The Copilot stays locked until a recent phone-camera frame or physical ESP32 reading exists for the selected inspection. This prevents old or empty samples from looking like live AI analysis."}
+                </p>
               </div>
             )}
             {messages.map((message, index) => (
@@ -119,11 +135,16 @@ export default function AICopilot({ session }) {
             {busy && <div className="ffChatThinking"><span /><span /><span /> Gemma is reading the retrieved evidence…</div>}
           </div>
 
+          {!hasLiveEvidence && (
+            <div className="notice">
+              AI Copilot is waiting for live evidence. Start a new inspection and capture a phone frame or send a physical ESP32 reading first.
+            </div>
+          )}
           {error && <div className="notice">{error}</div>}
 
           <div className="ffSuggestedQuestions">
             {suggestions.map((text) => (
-              <button key={text} type="button" onClick={() => ask(text)} disabled={!session.sample || busy}>{text}</button>
+              <button key={text} type="button" onClick={() => ask(text)} disabled={!canAsk}>{text}</button>
             ))}
           </div>
 
@@ -131,12 +152,12 @@ export default function AICopilot({ session }) {
             <input
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder={session.sample ? "Ask about this sample, evidence, sensors or missing data…" : "Select an inspection first…"}
-              disabled={!session.sample || busy}
+              placeholder={!session.sample ? "Select an inspection first…" : hasLiveEvidence ? "Ask about this sample, evidence, sensors or missing data…" : "Capture live evidence before asking AI…"}
+              disabled={!canAsk}
               maxLength={600}
               aria-label="Ask FreshFusion AI Copilot"
             />
-            <button className="primary" type="submit" disabled={!question.trim() || !session.sample || busy}>
+            <button className="primary" type="submit" disabled={!question.trim() || !canAsk}>
               <Send size={15} /> Ask
             </button>
           </form>
@@ -161,6 +182,8 @@ export default function AICopilot({ session }) {
 
           <Panel title="Selected inspection" eyebrow={session.sample?.sample_id || "NO SAMPLE"}>
             <div className="ffSourceMini">
+              <span>Camera</span><b>{cameraRecent ? "Recent" : "Waiting / stale"}</b>
+              <span>ESP32</span><b>{physicalSensorRecent ? "Recent hardware" : "Waiting / stale"}</b>
               <span>Critic</span><b>{report?.critic?.status || "Waiting"}</b>
               <span>Decision</span><b>{report?.decision?.status || "Waiting"}</b>
               <span>Fruit</span><b>{session.sample?.fruit_type || "—"}</b>
