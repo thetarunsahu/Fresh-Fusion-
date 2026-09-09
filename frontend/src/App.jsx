@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Plus, RefreshCw, WifiOff, X } from "lucide-react";
+import { AlertTriangle, LogOut, Plus, RefreshCw, UserRound, WifiOff, X } from "lucide-react";
 import WorkspaceLayout from "./layout/WorkspaceLayout";
 import useInspection from "./hooks/useInspection";
 import Overview from "./features/overview/Overview";
@@ -25,7 +25,7 @@ const routes = new Set([
 const currentPage = () =>
   routes.has(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
 
-export default function App() {
+export default function App({ user, onLogout }) {
   const [page, setPage] = useState(currentPage);
   const [fruit, setFruit] = useState("Auto");
   const [validation, setValidation] = useState(null);
@@ -102,6 +102,16 @@ export default function App() {
           onClick={recompute}
         >
           <RefreshCw size={15} /> Recompute
+        </button>
+        <div className="workspaceUser" title={user?.email || "Authenticated user"}>
+          <span className="workspaceUserIcon"><UserRound size={15} /></span>
+          <span>
+            <b>{user?.full_name || "FreshFusion user"}</b>
+            <small>{user?.role || "authenticated"}</small>
+          </span>
+        </div>
+        <button className="iconButton workspaceLogout" aria-label="Sign out" onClick={onLogout}>
+          <LogOut size={16} />
         </button>
       </div>
     </>
