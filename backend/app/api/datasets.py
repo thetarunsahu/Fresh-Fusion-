@@ -32,10 +32,14 @@ def validation(db: Session = Depends(get_db)):
         .order_by(ValidationRun.created_at.desc(), ValidationRun.id.desc())
         .first()
     )
+    # Preserve the legacy metric contract without fabricating an empty matrix as
+    # a measured result. Until at least one comparable human-labelled inspection
+    # exists, every legacy metric value remains explicitly unavailable.
+    has_comparable_samples = evaluation["sample_count"] > 0
     legacy_metrics = {
         name: {
             "status": evaluation["status"],
-            "value": evaluation.get(name),
+            "value": evaluation.get(name) if has_comparable_samples else None,
         }
         for name in ["accuracy", "precision", "recall", "f1", "confusion_matrix"]
     }
