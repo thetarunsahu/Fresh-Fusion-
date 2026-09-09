@@ -3,7 +3,6 @@ import {
   Bot,
   Camera,
   Database,
-  Leaf,
   Microscope,
   ShieldCheck,
   Sparkles,
@@ -17,7 +16,7 @@ export default function Landing({ user, navigate }) {
     <div className="portalPage landingPage">
       <header className="landingNav">
         <button className="portalBrand" onClick={() => navigate("home")}>
-          <span className="portalLogo"><Leaf size={22} /></span>
+          <span className="portalLogo ffPortalTextLogo">FF</span>
           <span>
             <b>FreshFusion</b>
             <small>Fruit Quality Intelligence</small>
@@ -51,9 +50,7 @@ export default function Landing({ user, navigate }) {
               <button className="portalPrimary portalPrimaryLarge" onClick={goWorkspace}>
                 Start investigating <ArrowRight size={18} />
               </button>
-              <button className="portalSecondary" onClick={() => navigate("login")}>
-                Secure access
-              </button>
+              <button className="portalSecondary" onClick={() => navigate("login")}>Secure access</button>
             </div>
             <div className="landingTrust">
               <span><ShieldCheck size={15} /> Deterministic gating</span>
@@ -63,8 +60,12 @@ export default function Landing({ user, navigate }) {
           </div>
 
           <div className="landingHeroVisual" aria-label="FreshFusion investigation concept">
+            <div className="ffLandingVisualHeader">
+              <div><span>SYSTEM READINESS</span><b>FreshFusion online</b></div>
+              <small>LOCAL AI</small>
+            </div>
             <div className="heroFruitOrb">
-              <div className="heroFruitCore"><Leaf size={46} /></div>
+              <div className="heroFruitCore"><b>FF</b><small>INVESTIGATION</small></div>
               <span className="heroOrbitLabel labelVision">Vision</span>
               <span className="heroOrbitLabel labelSensor">Sensors</span>
               <span className="heroOrbitLabel labelReference">Reference</span>
@@ -115,18 +116,8 @@ export default function Landing({ user, navigate }) {
             <h2>Designed to know when evidence is insufficient.</h2>
           </div>
           <div className="architectureRail">
-            {[
-              "Physical sample",
-              "Camera + ESP32",
-              "Analyst layers",
-              "Evidence critic",
-              "Deterministic fusion",
-              "Human review",
-            ].map((item, index) => (
-              <div key={item}>
-                <b>{String(index + 1).padStart(2, "0")}</b>
-                <span>{item}</span>
-              </div>
+            {["Physical sample", "Camera + ESP32", "Analyst layers", "Evidence critic", "Deterministic fusion", "Human review"].map((item, index) => (
+              <div key={item}><b>{String(index + 1).padStart(2, "0")}</b><span>{item}</span></div>
             ))}
           </div>
         </section>
@@ -140,25 +131,13 @@ export default function Landing({ user, navigate }) {
               visual analysis, reference context and human records alongside every explanation.
               Gemma explains the investigation; it does not replace the deterministic verdict.
             </p>
-            <button className="portalPrimary" onClick={goWorkspace}>
-              Explore the workspace <ArrowRight size={16} />
-            </button>
+            <button className="portalPrimary" onClick={goWorkspace}>Explore the workspace <ArrowRight size={16} /></button>
           </div>
           <div className="ragProofCard">
-            <div className="ragProofHeader">
-              <span><Bot size={18} /> AI Copilot</span>
-              <b>RAG ENABLED</b>
-            </div>
-            <div className="ragProofBadges">
-              <span>Gemma 3</span><span>Ollama local</span><span>4 sources retrieved</span>
-            </div>
-            <div className="ragProofAnswer">
-              <small>WHY IS THIS SAMPLE BLOCKED?</small>
-              <p>Camera evidence is available, but the latest physical ESP32 reading is stale. The critic therefore keeps the assessment locked.</p>
-            </div>
-            <div className="ragProofSources">
-              <span>Vision analysis</span><span>Sensor log</span><span>Reference index</span><span>Inspection history</span>
-            </div>
+            <div className="ragProofHeader"><span><Bot size={18} /> AI Copilot</span><b>RAG ENABLED</b></div>
+            <div className="ragProofBadges"><span>Gemma 3</span><span>Ollama local</span><span>Evidence retrieval</span></div>
+            <div className="ragProofAnswer"><small>WHY IS THIS SAMPLE BLOCKED?</small><p>Camera evidence is available, but the latest physical ESP32 reading is stale. The critic therefore keeps the assessment locked.</p></div>
+            <div className="ragProofSources"><span>Vision analysis</span><span>Sensor log</span><span>Reference index</span><span>Inspection history</span></div>
           </div>
         </section>
       </main>
