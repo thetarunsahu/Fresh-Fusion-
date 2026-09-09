@@ -5,6 +5,7 @@ import "./styles.css";
 import "./auto.css";
 import "./validation.css";
 import "./figma-ui.css";
+import "./figma-ui-extensions.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
