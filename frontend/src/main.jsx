@@ -4,6 +4,7 @@ import PortalApp from "./portal/PortalApp.jsx";
 import "./styles.css";
 import "./auto.css";
 import "./validation.css";
+import "./figma-ui.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
