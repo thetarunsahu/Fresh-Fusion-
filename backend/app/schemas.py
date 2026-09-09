@@ -2,10 +2,44 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+EMAIL_PATTERN = r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
+
+
+class UserRegister(BaseModel):
+    email: str = Field(min_length=5, max_length=255, pattern=EMAIL_PATTERN)
+    full_name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=8, max_length=128)
+    role: Literal["operator", "reviewer"] = "operator"
+
+
+class UserLogin(BaseModel):
+    email: str = Field(min_length=5, max_length=255, pattern=EMAIL_PATTERN)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: str
+    full_name: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    last_login_at: datetime | None = None
+
+
+class AuthTokenOut(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_at: datetime
+    user: UserOut
+
+
 class SampleCreate(BaseModel):
     fruit_type: str = Field(default="Auto", min_length=1, max_length=60, pattern=r"^[A-Za-z][A-Za-z -]*$")
     variety: str | None = None
     source: str | None = None
+
 
 class SampleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -15,6 +49,7 @@ class SampleOut(BaseModel):
     source: str | None = None
     status: str
     created_at: datetime
+
 
 class SensorIn(BaseModel):
     model_config = ConfigDict(extra="allow", allow_inf_nan=False)
@@ -37,6 +72,7 @@ class SensorIn(BaseModel):
             self.source = "simulator"
         return self
 
+
 class VerificationIn(BaseModel):
     action: Literal["accept", "incorrect", "ground_truth"]
     ground_truth: Literal["fresh", "ripe", "overripe", "spoiled"] | None = None
@@ -49,10 +85,12 @@ class VerificationIn(BaseModel):
             raise ValueError("Choose a FreshFusion ground-truth label")
         return self
 
+
 class SensorOut(SensorIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
     captured_at: datetime
+
 
 class FusionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
