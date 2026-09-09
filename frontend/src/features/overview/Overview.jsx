@@ -30,23 +30,27 @@ function MetricCard({ label, value, note, tone = "good" }) {
 export default function Overview({ session, onStart, navigate, validation }) {
   const report = session.report;
   const evidence = report?.evidence;
-  const latestSensor = session.data?.sensors?.at(-1) || {};
-  const latestImage = session.data?.images?.[0] || null;
+  const cameraRecent = evidence?.camera?.recent === true;
+  const sensorRecent = evidence?.sensors?.physical_present === true;
+  const storedImage = session.data?.images?.[0] || null;
+  const latestImage = cameraRecent ? storedImage : null;
+  const storedSensor = session.data?.sensors?.at(-1) || {};
+  const latestSensor = sensorRecent ? storedSensor : {};
   const vision = report?.analysts?.vision || {};
   const multi = report?.analysts?.multiview || {};
   const decision = report?.decision || {};
   const critic = report?.critic || {};
   const capturedViews = multi.views || [];
   const fruit =
-    vision.identity?.fruit && vision.identity.fruit !== "Unknown"
+    cameraRecent && vision.identity?.fruit && vision.identity.fruit !== "Unknown"
       ? vision.identity.fruit
       : session.sample?.fruit_type && session.sample.fruit_type !== "Auto"
         ? session.sample.fruit_type
         : "Waiting";
 
   const signals = [
-    ["Camera evidence", Boolean(evidence?.camera?.recent)],
-    ["ESP32 telemetry", Boolean(evidence?.sensors?.physical_present)],
+    ["Camera evidence", cameraRecent],
+    ["ESP32 telemetry", sensorRecent],
     ["Reference index", Boolean(validation?.reference_index?.ready)],
     ["RAG context", Boolean(report)],
   ];
@@ -55,22 +59,22 @@ export default function Overview({ session, onStart, navigate, validation }) {
     [
       "Temperature",
       latestSensor.temperature == null ? "—" : `${fmt(latestSensor.temperature)} °C`,
-      latestSensor.temperature == null ? "Waiting for hardware" : "Latest hardware reading",
+      latestSensor.temperature == null ? "Waiting for recent hardware" : "Recent physical reading",
       latestSensor.temperature == null ? "neutral" : "good",
     ],
     [
       "Humidity",
       latestSensor.humidity == null ? "—" : `${fmt(latestSensor.humidity)}% RH`,
-      latestSensor.humidity == null ? "Waiting for DHT11" : "DHT11 chamber state",
+      latestSensor.humidity == null ? "Waiting for recent DHT11 data" : "Recent chamber state",
       latestSensor.humidity == null ? "neutral" : "good",
     ],
     [
       "MQ135 raw",
       latestSensor.mq135_raw == null ? "—" : `${fmt(latestSensor.mq135_raw, 0)} ADC`,
-      "Uncalibrated relative signal",
+      latestSensor.mq135_raw == null ? "Waiting for recent hardware" : "Uncalibrated relative signal",
       latestSensor.mq135_raw == null ? "neutral" : "warning",
     ],
-    ["Fruit identity", fruit, "Vision / selected sample", fruit === "Waiting" ? "neutral" : "good"],
+    ["Fruit identity", fruit, cameraRecent ? "Recent vision evidence" : "Selected inspection / waiting for camera", fruit === "Waiting" ? "neutral" : "good"],
     [
       "Assessment",
       decision.verdict_ready ? titleCase(decision.label) : "More evidence",
@@ -80,8 +84,8 @@ export default function Overview({ session, onStart, navigate, validation }) {
   ];
 
   const analystRows = [
-    ["Vision Analyst", "Surface + identity", vision.identity?.confidence == null ? "Waiting" : `${fmt(vision.identity.confidence, 0)}%`],
-    ["Sensor Analyst", "Temp / RH / MQ135", evidence?.sensors?.physical_present ? "Valid" : "Waiting"],
+    ["Vision Analyst", "Surface + identity", cameraRecent && vision.identity?.confidence != null ? `${fmt(vision.identity.confidence, 0)}%` : "Waiting"],
+    ["Sensor Analyst", "Temp / RH / MQ135", sensorRecent ? "Valid" : "Waiting"],
     ["Reference Analyst", "Retrieved class context", report?.analysts?.reference?.index?.ready ? "Ready" : "Waiting"],
     ["Multi-view Analyst", "Physical consistency", `${capturedViews.length} / ${multi.required_views ?? 3}`],
   ];
@@ -150,12 +154,16 @@ export default function Overview({ session, onStart, navigate, validation }) {
           <div className="ffVisualBody">
             <div className="ffCameraPreview">
               {latestImage?.url ? (
-                <img src={latestImage.url} alt="Latest fruit evidence" />
+                <img src={latestImage.url} alt="Current recent fruit evidence" />
               ) : (
                 <div className="ffCameraEmpty">
                   <Camera size={28} />
-                  <b>Fruit frame preview</b>
-                  <span>Capture a real view from the phone camera.</span>
+                  <b>{storedImage?.url ? "Camera is not streaming" : "No current camera frame"}</b>
+                  <span>
+                    {storedImage?.url
+                      ? "A stored frame exists, but it is hidden here so stale evidence is never presented as live. Open History & Evidence to review it."
+                      : "Start a new inspection and capture a real view from the phone camera."}
+                  </span>
                 </div>
               )}
             </div>
@@ -165,7 +173,7 @@ export default function Overview({ session, onStart, navigate, validation }) {
                 return (
                   <div key={view} className={captured ? "captured" : "needed"}>
                     <b>{titleCase(view)}</b>
-                    <span>{captured ? "captured" : "needed"}</span>
+                    <span>{captured ? (cameraRecent ? "captured" : "stored") : "needed"}</span>
                   </div>
                 );
               })}
@@ -206,7 +214,7 @@ export default function Overview({ session, onStart, navigate, validation }) {
           </div>
           <p>Ask why a verdict is locked, what evidence is missing, or what the sensors contributed.</p>
           <div className="ffCopilotBadges">
-            <span>Gemma 3</span><span>Ollama local</span><span>RAG enabled</span>
+            <span>Gemma 3</span><span>Ollama local</span><span>Evidence-grounded</span>
           </div>
         </button>
       </section>
