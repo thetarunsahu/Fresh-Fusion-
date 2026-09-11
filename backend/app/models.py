@@ -82,3 +82,31 @@ class HumanVerification(Base):
     reviewer = Column(String(100), default="")
     assessment = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InspectionProfile(Base):
+    """Additive per-inspection metadata and operating protocol state."""
+    __tablename__ = "inspection_profiles"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), unique=True, index=True, nullable=False)
+    approximate_weight_g = Column(Float, nullable=True)
+    fruit_count = Column(Integer, default=1)
+    batch_id = Column(String(80), nullable=True, index=True)
+    supplier = Column(String(120), nullable=True)
+    storage_location = Column(String(120), nullable=True)
+    protocol = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class InspectionEvent(Base):
+    """Persistent condition, alert and workflow events with de-duplication keys."""
+    __tablename__ = "inspection_events"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
+    event_type = Column(String(60), index=True, nullable=False)
+    severity = Column(String(20), default="info", nullable=False)
+    dedupe_key = Column(String(160), nullable=True, index=True)
+    message = Column(Text, nullable=False)
+    payload = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
