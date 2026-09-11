@@ -80,7 +80,7 @@ def record_assessment_changes(db: Session, current: FusionResult) -> list[Inspec
                     dedupe_key="score_drop",
                 )
                 if row: created.append(row)
-    sensor = (current.components or {}).get("sensor", {})
+    sensor = (current.components or {}).get("sensor_evidence", {})
     trend = sensor.get("trend") if isinstance(sensor, dict) else None
     if isinstance(trend, dict) and trend.get("direction") == "rising":
         rate = trend.get("raw_per_minute")
