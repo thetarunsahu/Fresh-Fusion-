@@ -10,19 +10,17 @@ export default function LiveInspectionWorkspace({ session }) {
       <section className="ffRestoredEvidence">
         <div className="ffRestoredEvidenceHeader">
           <div>
-            <span>DETAILED EVIDENCE & ANALYSIS</span>
-            <h2>Full technical inspection workspace</h2>
+            <span>DETAILED ANALYSIS</span>
+            <h2>Inspection evidence and measurements</h2>
             <p>
-              Product decisions stay at the top. The original FreshFusion evidence tools remain
-              available below for QR pairing, sensor trends, reference data, image analysis,
-              colour, texture and observations.
+              Open the detailed analysis when you want to review sensor trends, phone pairing,
+              reference data, image analysis, colour, texture and observation details.
             </p>
           </div>
-          <span className="ffRestoredBadge">RESTORED</span>
         </div>
 
-        <details open className="ffRestoredDetails">
-          <summary>Show detailed technical modules</summary>
+        <details className="ffRestoredDetails">
+          <summary>Open detailed analysis</summary>
           <div className="ffLegacyEvidenceOnly">
             <LiveInspection session={session} />
           </div>
