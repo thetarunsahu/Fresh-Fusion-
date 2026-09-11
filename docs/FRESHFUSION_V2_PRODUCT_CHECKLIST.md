@@ -20,8 +20,14 @@ The primary product rule is:
 - [ ] Add fruit-specific recommendation rules backed by collected data.
 - [ ] Add evidence-score breakdown so every point in the 100-point score is traceable.
 - [ ] Add image-quality gating: blur, lighting, framing and duplicate-view checks.
-- [ ] Add stronger sensor-health state: warm-up, stale reading, flat/stuck signal and drift warning.
-- [ ] Add empty-chamber baseline capture and baseline-relative MQ135 delta.
+- [x] Add sensor warm-up state.
+- [x] Detect stale physical sensor evidence.
+- [x] Add flat/stuck MQ135 signal warning.
+- [ ] Add long-term sensor drift warning against historical calibration/baseline sessions.
+- [x] Add explicit empty-chamber baseline capture.
+- [x] Add baseline-relative MQ135 raw delta.
+- [x] Add recent MQ135 raw trend and rate-of-change reporting.
+- [x] Add sensor evidence quality: Strong / Moderate / Weak.
 - [ ] Add fixed inspection-time protocol in software.
 - [ ] Add chamber purge/reset workflow between samples.
 - [ ] Add fruit quantity / approximate weight metadata for gas-response interpretation.
@@ -48,6 +54,8 @@ The primary product rule is:
 - [x] Show risk level.
 - [x] Show a clear reason for the recommendation.
 - [x] Keep raw measurements as small supporting evidence.
+- [x] Show local MQ135 baseline delta beside the raw reading when available.
+- [x] Show sensor evidence quality beside operator-facing evidence.
 - [ ] Add validated / calibrated remaining-useful-life estimation.
 - [ ] Add recommendation justification with explicit evidence references.
 - [ ] Add action completion states: sold, processed, rejected, reinspected.
@@ -60,16 +68,19 @@ The primary product rule is:
 ## P1 — Proactive assistant
 
 - [x] Assistant can generate guidance without waiting for a user question.
-- [x] Assistant warns about blocked evidence, missing views and stale sensor evidence.
+- [x] Assistant warns about blocked evidence, missing views and stale/missing sensor evidence.
 - [x] Assistant clearly states that it does not independently decide freshness.
-- [ ] Trigger assistant messages on freshness-class change.
+- [x] Assistant warns while the prototype sensor warm-up gate is incomplete.
+- [x] Assistant warns when an MQ135 signal appears stuck/flat.
+- [x] Assistant asks for an empty-chamber baseline when none is available.
+- [x] Assistant reacts to a rising / falling / stable MQ135 raw trend when a verdict is available.
+- [ ] Trigger assistant messages on freshness-class change across inspections.
 - [ ] Trigger assistant messages on sharp score deterioration.
-- [ ] Trigger assistant messages on gas-trend increase.
-- [ ] Trigger assistant messages when fruit enters priority-sale / reject zones.
-- [ ] Add alert severity: info, warning, critical.
+- [ ] Trigger assistant messages when fruit enters priority-sale / reject zones as a persisted event.
+- [x] Add alert severity semantics: info, warning, critical.
 - [ ] Add alert cooldown / de-duplication.
 - [ ] Persist assistant events in the evidence timeline.
-- [ ] Add current-inspection and previous-inspection context to assistant explanations.
+- [ ] Add previous-inspection context to assistant explanations.
 
 ## P1 — Reliability and edge cases
 
@@ -111,12 +122,13 @@ The current prototype does **not** directly measure internal texture, firmness, 
 - [ ] Evaluate a low-cost firmness / compression sensor.
 - [ ] Evaluate NIR spectroscopy for internal-quality estimation.
 - [ ] Consider hyperspectral / advanced optical sensing only for later industrial versions.
-- [ ] Keep internal-quality status explicitly labelled as `Not measured` until validated hardware exists.
+- [x] Keep internal-quality status explicitly labelled as `Not measured` until validated hardware exists.
 
 ## Scientific boundaries
 
 - MQ135 raw ADC is not ppm without calibration.
 - There is no universal MQ135 number for a fresh Apple, Banana or Tomato.
+- Empty-chamber baseline and MQ135 delta are local operational references, not universal standards.
 - Reference similarity is not model accuracy or probability.
 - Experimental fusion weights are not scientific constants.
 - A 100-point score must not be presented as a validated freshness percentage unless calibrated and validated.
