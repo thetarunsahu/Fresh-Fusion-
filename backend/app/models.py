@@ -1,7 +1,20 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 from .database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    full_name = Column(String(120), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(30), default="operator", index=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    last_login_at = Column(DateTime, nullable=True)
+
 
 class FruitSample(Base):
     __tablename__ = "fruit_samples"
@@ -16,6 +29,8 @@ class FruitSample(Base):
     sensors = relationship("SensorReading", back_populates="sample", cascade="all, delete-orphan")
     images = relationship("FruitImage", back_populates="sample", cascade="all, delete-orphan")
     results = relationship("FusionResult", back_populates="sample", cascade="all, delete-orphan")
+    investigation_runs = relationship("InvestigationRun", back_populates="sample", cascade="all, delete-orphan")
+
 
 class SensorReading(Base):
     __tablename__ = "sensor_readings"
@@ -33,6 +48,7 @@ class SensorReading(Base):
     captured_at = Column(DateTime, default=datetime.utcnow, index=True)
     sample = relationship("FruitSample", back_populates="sensors")
 
+
 class FruitImage(Base):
     __tablename__ = "fruit_images"
     id = Column(Integer, primary_key=True)
@@ -47,6 +63,7 @@ class FruitImage(Base):
     analysis = Column(JSON, default=dict)
     uploaded_at = Column(DateTime, default=datetime.utcnow, index=True)
     sample = relationship("FruitSample", back_populates="images")
+
 
 class FusionResult(Base):
     __tablename__ = "fusion_results"
@@ -65,14 +82,12 @@ class FusionResult(Base):
 
 
 class InspectionControl(Base):
-    """One chamber's explicit capture target. Browsing history never changes it."""
     __tablename__ = "inspection_control"
     id = Column(Integer, primary_key=True)
     sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), nullable=False)
 
 
 class HumanVerification(Base):
-    """Append-only human observations, separate from public labels and predictions."""
     __tablename__ = "human_verifications"
     id = Column(Integer, primary_key=True)
     sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
@@ -81,11 +96,45 @@ class HumanVerification(Base):
     notes = Column(Text, default="")
     reviewer = Column(String(100), default="")
     assessment = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class InvestigationRun(Base):
+    __tablename__ = "investigation_runs"
+    id = Column(Integer, primary_key=True)
+    sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
+    trigger = Column(String(40), default="manual")
+    snapshot = Column(JSON, default=dict)
+    llm_explanation = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    sample = relationship("FruitSample", back_populates="investigation_runs")
+
+
+class ValidationRun(Base):
+    __tablename__ = "validation_runs"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(String(40), unique=True, index=True, nullable=False)
+    name = Column(String(120), default="manual")
+    protocol = Column(String(80), default="latest-ground-truth-per-inspection")
+    sample_count = Column(Integer, default=0)
+    metrics = Column(JSON, default=dict)
+    dataset_snapshot = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), nullable=False)
+    version = Column(String(80), nullable=False)
+    artifact_path = Column(String(500), nullable=True)
+    sha256 = Column(String(64), nullable=True, index=True)
+    labels = Column(JSON, default=list)
+    metadata_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class InspectionProfile(Base):
-    """Additive per-inspection metadata and operating protocol state."""
     __tablename__ = "inspection_profiles"
     id = Column(Integer, primary_key=True)
     sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), unique=True, index=True, nullable=False)
@@ -100,7 +149,6 @@ class InspectionProfile(Base):
 
 
 class InspectionEvent(Base):
-    """Persistent condition, alert and workflow events with de-duplication keys."""
     __tablename__ = "inspection_events"
     id = Column(Integer, primary_key=True)
     sample_id = Column(String(32), ForeignKey("fruit_samples.sample_id"), index=True, nullable=False)
