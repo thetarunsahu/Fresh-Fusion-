@@ -30,14 +30,13 @@ function ConfusionMatrix({ value }) {
 export default function Validation({ summary, reload }) {
   const metrics = summary?.metrics || {};
   const real = summary?.validation || {};
+  const calibration = summary?.calibration || {};
   return (
     <div className="featurePage">
       <div className="pageIntro">
         <span className="eyebrow">DATASET & VALIDATION</span>
         <h1>Separate reference data from proof.</h1>
-        <p>
-          FreshFusion only reports validation metrics from human ground truth paired with a verified system decision. Published reference labels never count as system accuracy.
-        </p>
+        <p>FreshFusion only reports validation metrics from human ground truth paired with a verified system decision. Published reference labels never count as system accuracy.</p>
         <button className="secondary" onClick={reload}>Refresh validation</button>
       </div>
 
@@ -72,21 +71,34 @@ export default function Validation({ summary, reload }) {
         </Panel>
       </div>
 
-      <Panel title="Confusion matrix">
-        <ConfusionMatrix value={metrics.confusion_matrix?.value}/>
+      <Panel title="Fruit calibration readiness" eyebrow="FRESHFUSION CHAMBER DATA ONLY">
+        <div className="ffPerClassGrid">
+          {["Apple", "Banana", "Tomato"].map((fruit) => {
+            const readiness = calibration?.fruit_readiness?.[fruit] || {};
+            const counts = readiness.class_counts || {};
+            return (
+              <div key={fruit} className="ffPerClassCard">
+                <b>{fruit}</b>
+                <StatusChip tone={readiness.ready ? "good" : "neutral"}>{readiness.ready ? "BAND DATA READY" : "COLLECT MORE DATA"}</StatusChip>
+                <span>Fresh {counts.fresh ?? 0}</span>
+                <span>Ripe {counts.ripe ?? 0}</span>
+                <span>Overripe {counts.overripe ?? 0}</span>
+                <span>Spoiled {counts.spoiled ?? 0}</span>
+                <small>Target: {calibration?.minimum_samples_per_class ?? 5}+ labelled inspections per class</small>
+              </div>
+            );
+          })}
+        </div>
+        <p className="footnote">{calibration?.note || "No labelled calibration data collected yet. FreshFusion will not invent universal gas thresholds."}</p>
       </Panel>
+
+      <Panel title="Confusion matrix"><ConfusionMatrix value={metrics.confusion_matrix?.value}/></Panel>
 
       {real?.per_class && (
         <Panel title="Per-class performance">
           <div className="ffPerClassGrid">
             {Object.entries(real.per_class).map(([label, row]) => (
-              <div key={label} className="ffPerClassCard">
-                <b>{titleCase(label)}</b>
-                <span>Precision {pct(row.precision)}</span>
-                <span>Recall {pct(row.recall)}</span>
-                <span>F1 {pct(row.f1)}</span>
-                <small>Support {row.support}</small>
-              </div>
+              <div key={label} className="ffPerClassCard"><b>{titleCase(label)}</b><span>Precision {pct(row.precision)}</span><span>Recall {pct(row.recall)}</span><span>F1 {pct(row.f1)}</span><small>Support {row.support}</small></div>
             ))}
           </div>
         </Panel>
@@ -95,11 +107,7 @@ export default function Validation({ summary, reload }) {
       {real?.fruit_breakdown && Object.keys(real.fruit_breakdown).length > 0 && (
         <Panel title="Fruit-wise evaluation">
           <div className="ffPerClassGrid">
-            {Object.entries(real.fruit_breakdown).map(([fruit, row]) => (
-              <div key={fruit} className="ffPerClassCard">
-                <b>{fruit}</b><span>Accuracy {pct(row.accuracy)}</span><small>{row.correct}/{row.total} matched</small>
-              </div>
-            ))}
+            {Object.entries(real.fruit_breakdown).map(([fruit, row]) => <div key={fruit} className="ffPerClassCard"><b>{fruit}</b><span>Accuracy {pct(row.accuracy)}</span><small>{row.correct}/{row.total} matched</small></div>)}
           </div>
         </Panel>
       )}
@@ -107,21 +115,14 @@ export default function Validation({ summary, reload }) {
       <div className="twoPanels">
         {summary?.datasets?.map((dataset) => (
           <Panel key={dataset.id} title={dataset.name} eyebrow={titleCase(dataset.purpose)}>
-            <Facts items={[
-              ["License (source metadata)", dataset.license],
-              ["Supported reference fruits", dataset.supports.join(", ")],
-              ["Published classes", dataset.labels?.join(", ") || "Fruit identity classes"],
-            ]}/>
-            <p>{dataset.note}</p>
-            <a href={dataset.url} target="_blank" rel="noreferrer">Open dataset source</a>
+            <Facts items={[["License (source metadata)", dataset.license],["Supported reference fruits", dataset.supports.join(", ")],["Published classes", dataset.labels?.join(", ") || "Fruit identity classes"]]}/>
+            <p>{dataset.note}</p><a href={dataset.url} target="_blank" rel="noreferrer">Open dataset source</a>
           </Panel>
         ))}
       </div>
 
       <Panel title="Collection protocol">
-        <p>
-          Give every physical fruit a stable specimen ID, keep all views and repeated inspections of that specimen in the same split, record empty-chamber baseline and sensor readings, then add human Fresh / Ripe / Overripe / Spoiled ground truth independently from the system prediction.
-        </p>
+        <p>Give every physical fruit a stable specimen ID, keep all views and repeated inspections of that specimen in the same split, record empty-chamber baseline and sensor readings, then add human Fresh / Ripe / Overripe / Spoiled ground truth independently from the system prediction.</p>
       </Panel>
     </div>
   );
