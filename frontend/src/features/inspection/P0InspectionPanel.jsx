@@ -18,6 +18,7 @@ export default function P0InspectionPanel({ session }) {
   const recommendation = product.recommendation || {};
   const protocol = product.protocol || {};
   const drift = product.sensor_drift || {};
+  const provenance = product.provenance || {};
   const events = product.events || [];
   const sourceProfile = product.profile || {};
   const [saving, setSaving] = useState(false);
@@ -115,6 +116,18 @@ export default function P0InspectionPanel({ session }) {
         <p className="p0Info">Use the same specimen ID when you re-inspect the same physical fruit. This keeps all of its views and repeated observations in one validation split.</p>
         {(protocol.issues?.length > 0 || protocol.warnings?.length > 0) && <div className="p0ProtocolNotes">{[...(protocol.issues||[]), ...(protocol.warnings||[])].map((x)=><span key={x}>{x}</span>)}</div>}
         {drift.checked && <p className={drift.suspected ? "p0Drift warn" : "p0Drift"}>Sensor drift: <b>{drift.suspected ? "Review required" : "Within historical band"}</b> · current baseline {num(drift.current_baseline_mean,0)} ADC vs historical {num(drift.historical_baseline_median,0)} ADC.</p>}
+      </div>
+
+      <div className="p0Protocol">
+        <div className="p0ProtocolHead"><div><span>DECISION PROVENANCE</span><h3>Exactly which logic produced this assessment</h3></div><Status ok={provenance.calibration_version && provenance.calibration_version !== "UNCALIBRATED"}>{provenance.scientific_status ? nice(provenance.scientific_status) : "Version data pending"}</Status></div>
+        <div className="p0MiniGrid">
+          <div><span>Rule version</span><b>{provenance.rule_version || "--"}</b></div>
+          <div><span>Recommendation</span><b>{provenance.recommendation_version || "--"}</b></div>
+          <div><span>Dataset version</span><b>{provenance.dataset_version || "--"}</b></div>
+          <div><span>Calibration</span><b>{provenance.calibration_version || "--"}</b></div>
+          <div><span>Split policy</span><b>{provenance.split_version || "--"}</b></div>
+          <div><span>Model artifact</span><b>{nice(provenance.model?.status || "not deployed")}</b><small>{provenance.model?.sha256 ? `${provenance.model.sha256.slice(0, 12)}…` : "No validated model hash"}</small></div>
+        </div>
       </div>
     </section>
   );
