@@ -6,31 +6,41 @@ The primary product rule is:
 
 > Decision first. Evidence behind it. Every number must have a source, and every recommendation must be actionable.
 
-## P0 — SIH-critical product changes
+## P0 — Product-critical changes
 
 - [x] Add an operator-first decision view.
 - [x] Keep technical numbers visible but visually secondary.
 - [x] Add proactive assistant messages driven by backend evidence.
-- [x] Use a 3-view workflow for the current prototype.
+- [x] Use a 3-view workflow for the current product flow.
 - [x] Add Tomato as a manually selectable inspection fruit.
-- [x] Clearly separate internal quality from what the current prototype can measure.
+- [x] Clearly separate internal quality from what the current sensing setup can measure.
 - [x] Avoid pretending that remaining useful life is calibrated.
-- [ ] Add previous-vs-current condition comparison.
-- [ ] Add persistent condition-change events.
-- [ ] Add fruit-specific recommendation rules backed by collected data.
-- [ ] Add evidence-score breakdown so every point in the 100-point score is traceable.
-- [ ] Add image-quality gating: blur, lighting, framing and duplicate-view checks.
+- [x] Add previous-vs-current condition comparison.
+- [x] Add persistent condition-change events.
+- [x] Add traceable evidence-score breakdown for the current deterministic score.
+- [x] Add image-quality gating: blur, lighting, framing and duplicate-view checks.
+- [x] Add multiple-fruit-like-region warning.
+- [x] Add stronger 3-view evidence gating.
+- [x] Add unsupported-fruit handling for product decision rules.
+- [x] Separate visible damage from freshness state in recommendation logic.
 - [x] Add sensor warm-up state.
 - [x] Detect stale physical sensor evidence.
 - [x] Add flat/stuck MQ135 signal warning.
-- [ ] Add long-term sensor drift warning against historical calibration/baseline sessions.
+- [x] Add long-term MQ135 baseline-drift warning against prior baseline sessions.
 - [x] Add explicit empty-chamber baseline capture.
 - [x] Add baseline-relative MQ135 raw delta.
 - [x] Add recent MQ135 raw trend and rate-of-change reporting.
 - [x] Add sensor evidence quality: Strong / Moderate / Weak.
-- [ ] Add fixed inspection-time protocol in software.
-- [ ] Add chamber purge/reset workflow between samples.
-- [ ] Add fruit quantity / approximate weight metadata for gas-response interpretation.
+- [x] Add configurable inspection stabilization-time protocol.
+- [x] Add chamber purge/reset state to the inspection protocol.
+- [x] Add fruit quantity / approximate weight metadata for gas-response interpretation.
+- [x] Add batch ID, supplier and storage-location fields to the inspection profile.
+- [x] Add product-facing inspection quality / protocol panel.
+- [x] Keep previous QR, sensor graph, reference, image analysis, colour, texture and observation modules available.
+
+### P0 scientific limitation still open
+
+- [ ] Calibrate fruit-specific freshness / recommendation thresholds using collected Apple, Banana and Tomato ground truth. Current fruit-aware action rules are operational heuristics, not validated biological thresholds.
 
 ## P0 — Real dataset and validation
 
@@ -56,8 +66,9 @@ The primary product rule is:
 - [x] Keep raw measurements as small supporting evidence.
 - [x] Show local MQ135 baseline delta beside the raw reading when available.
 - [x] Show sensor evidence quality beside operator-facing evidence.
+- [x] Add current score formula / contribution explanation.
 - [ ] Add validated / calibrated remaining-useful-life estimation.
-- [ ] Add recommendation justification with explicit evidence references.
+- [ ] Add recommendation justification with dataset-calibrated evidence references.
 - [ ] Add action completion states: sold, processed, rejected, reinspected.
 - [ ] Track business outcome after recommendation.
 - [ ] Add batch-level recommendations.
@@ -70,24 +81,25 @@ The primary product rule is:
 - [x] Assistant can generate guidance without waiting for a user question.
 - [x] Assistant warns about blocked evidence, missing views and stale/missing sensor evidence.
 - [x] Assistant clearly states that it does not independently decide freshness.
-- [x] Assistant warns while the prototype sensor warm-up gate is incomplete.
+- [x] Assistant warns while the sensor warm-up gate is incomplete.
 - [x] Assistant warns when an MQ135 signal appears stuck/flat.
 - [x] Assistant asks for an empty-chamber baseline when none is available.
 - [x] Assistant reacts to a rising / falling / stable MQ135 raw trend when a verdict is available.
-- [ ] Trigger assistant messages on freshness-class change across inspections.
-- [ ] Trigger assistant messages on sharp score deterioration.
-- [ ] Trigger assistant messages when fruit enters priority-sale / reject zones as a persisted event.
+- [x] Persist freshness-class-change events.
+- [x] Persist sharp score-deterioration events.
+- [x] Persist priority-sale / quick-sale / reject-zone events.
 - [x] Add alert severity semantics: info, warning, critical.
-- [ ] Add alert cooldown / de-duplication.
-- [ ] Persist assistant events in the evidence timeline.
-- [ ] Add previous-inspection context to assistant explanations.
+- [x] Add alert cooldown / de-duplication.
+- [x] Persist assistant events in the evidence timeline.
+- [x] Show recent condition / alert events in the Live Inspection decision layer.
+- [ ] Make the right-side conversational assistant directly prioritize the newest persisted alert before all local guidance rules.
 
 ## P1 — Reliability and edge cases
 
-- [ ] Add repeatability check for repeated scans of the same fruit.
-- [ ] Add unsupported-fruit handling.
-- [ ] Add multiple-fruit detection / warning.
-- [ ] Separate visible damage from freshness state.
+- [ ] Add repeatability check for repeated scans of the same physical fruit.
+- [x] Add unsupported-fruit handling.
+- [x] Add multiple-fruit detection / warning heuristic.
+- [x] Separate visible damage from freshness state.
 - [ ] Add mold-like visual warning without making a food-safety claim.
 - [ ] Add preliminary vs confirmed assessment states.
 - [ ] Add offline/local graceful-degradation behaviour.
@@ -96,15 +108,16 @@ The primary product rule is:
 
 ## P1 — Traceability
 
-- [ ] Persist sample identity across repeated inspections.
-- [ ] Add batch ID, supplier, arrival date and storage-location metadata.
+- [ ] Persist physical-fruit identity across repeated-day inspections.
+- [x] Add batch ID, supplier and storage-location metadata.
+- [ ] Add arrival-date metadata.
 - [ ] Record which user added ground truth or manual override.
 - [ ] Store model version.
 - [ ] Store rule / scoring version.
 - [ ] Store dataset version.
 - [ ] Store sensor calibration version.
 - [ ] Store recommendation-rule version.
-- [ ] Add full audit trail for evidence, decisions, overrides and actions.
+- [ ] Add full audit trail for evidence, decisions, overrides and completed actions.
 
 ## P2 — Product UX
 
@@ -117,7 +130,7 @@ The primary product rule is:
 
 ## P2 — Internal quality roadmap
 
-The current prototype does **not** directly measure internal texture, firmness, internal browning, Brix or internal rot.
+The current sensing setup does **not** directly measure internal texture, firmness, internal browning, Brix or internal rot.
 
 - [ ] Evaluate a low-cost firmness / compression sensor.
 - [ ] Evaluate NIR spectroscopy for internal-quality estimation.
@@ -129,10 +142,11 @@ The current prototype does **not** directly measure internal texture, firmness, 
 - MQ135 raw ADC is not ppm without calibration.
 - There is no universal MQ135 number for a fresh Apple, Banana or Tomato.
 - Empty-chamber baseline and MQ135 delta are local operational references, not universal standards.
+- Historical baseline drift is an operational warning, not a laboratory calibration certificate.
 - Reference similarity is not model accuracy or probability.
-- Experimental fusion weights are not scientific constants.
+- Current fusion weights are not scientific constants.
 - A 100-point score must not be presented as a validated freshness percentage unless calibrated and validated.
-- Do not claim internal quality from the current camera + DHT11 + MQ135 prototype.
+- Do not claim internal quality from the current camera + DHT11 + MQ135 sensing setup.
 - Do not make food-safety claims.
 - Do not show fabricated validation metrics.
 - Fruit-specific remaining useful life must remain uncalibrated until supported by longitudinal data.
