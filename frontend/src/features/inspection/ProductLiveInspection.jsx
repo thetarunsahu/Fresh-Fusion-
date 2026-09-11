@@ -1,6 +1,21 @@
 import { useMemo, useState } from "react";
-import { Camera, ChevronDown, MessageCircle, ShieldAlert, Sparkles, Thermometer, Droplets, Gauge, Eye, Wifi, WifiOff } from "lucide-react";
+import {
+  Camera,
+  ChevronDown,
+  MessageCircle,
+  ShieldAlert,
+  Sparkles,
+  Thermometer,
+  Droplets,
+  Gauge,
+  Eye,
+  Wifi,
+  WifiOff,
+  Activity,
+  CheckCircle2,
+} from "lucide-react";
 import CameraStream from "../../components/CameraStream";
+import { captureSensorBaseline } from "../../api";
 import "./product-live-inspection.css";
 
 const fmt = (value, digits = 0) =>
@@ -24,9 +39,34 @@ function actionFor(label, ready) {
   return { action: "Inspect again", risk: "Unknown", tone: "pending" };
 }
 
-function assistantMessage({ ready, label, viewsCount, sensorPresent, critic, fruit }) {
+function assistantMessage({
+  ready,
+  label,
+  viewsCount,
+  sensorPresent,
+  critic,
+  fruit,
+  sensor,
+}) {
+  if (sensor?.warmup?.ready === false) {
+    return {
+      severity: "warning",
+      changed: "The gas sensor is still inside the prototype warm-up period.",
+      meaning: "Its current gas reading should not be used as reliable fruit evidence yet.",
+      action: "Keep the chamber empty and wait for the warm-up indicator to become ready.",
+    };
+  }
+  if (sensor?.health?.stuck_signal?.suspected) {
+    return {
+      severity: "critical",
+      changed: "The MQ135 signal has barely changed across several recent readings.",
+      meaning: "The sensor may be stuck or the measurement setup may need checking.",
+      action: "Check the sensor connection and chamber airflow, then collect fresh readings.",
+    };
+  }
   if (viewsCount < 3) {
     return {
+      severity: "warning",
       changed: `Only ${viewsCount}/3 views are available.`,
       meaning: "There is not enough visual evidence to confirm the fruit condition yet.",
       action: "Capture the remaining view before relying on the result.",
@@ -34,13 +74,31 @@ function assistantMessage({ ready, label, viewsCount, sensorPresent, critic, fru
   }
   if (!sensorPresent) {
     return {
+      severity: "warning",
       changed: "The camera evidence is available, but fresh sensor evidence is missing.",
       meaning: "The system cannot complete a reliable multimodal assessment yet.",
       action: "Wait for a fresh ESP32 reading and keep the fruit in the chamber.",
     };
   }
+  if (!sensor?.baseline?.available) {
+    return {
+      severity: "info",
+      changed: "No empty-chamber MQ135 baseline has been recorded for this inspection.",
+      meaning: "FreshFusion can show the raw gas value, but it cannot yet show how far it has moved from your chamber baseline.",
+      action: "Before inserting the fruit, record at least three empty-chamber baseline readings.",
+    };
+  }
+  if (sensor?.baseline?.stable === false) {
+    return {
+      severity: "warning",
+      changed: "The empty-chamber baseline is changing too much between readings.",
+      meaning: "A moving baseline can make fruit-to-baseline comparisons misleading.",
+      action: "Purge the chamber, keep it empty, and record a new stable baseline set.",
+    };
+  }
   if (critic?.blocking || critic?.status === "BLOCKED") {
     return {
+      severity: "warning",
       changed: "The evidence check found a conflict or missing requirement.",
       meaning: "FreshFusion is deliberately holding the final result instead of guessing.",
       action: "Follow the highlighted evidence request, then inspect again.",
@@ -48,6 +106,7 @@ function assistantMessage({ ready, label, viewsCount, sensorPresent, critic, fru
   }
   if (!ready) {
     return {
+      severity: "info",
       changed: "Evidence is still being verified.",
       meaning: "The system does not have enough verified information for a final assessment.",
       action: "Keep the fruit steady and allow the camera and sensors to finish collecting evidence.",
@@ -55,8 +114,17 @@ function assistantMessage({ ready, label, viewsCount, sensorPresent, critic, fru
   }
   const state = title(label || "current condition");
   const recommendation = actionFor(label, true).action;
+  const trend = sensor?.trend?.direction;
+  const trendText = trend === "rising"
+    ? " The gas-response trend is rising."
+    : trend === "falling"
+      ? " The gas-response trend is falling."
+      : trend === "stable"
+        ? " The recent gas-response trend is stable."
+        : "";
   return {
-    changed: `${fruit || "This fruit"} is currently assessed as ${state}.`,
+    severity: "info",
+    changed: `${fruit || "This fruit"} is currently assessed as ${state}.${trendText}`,
     meaning: "The result is based on the verified camera, sensor and supporting evidence available now.",
     action: `${recommendation}. Re-inspect if the fruit remains in storage and its condition changes.`,
   };
@@ -73,8 +141,10 @@ function SmallChip({ icon: Icon, label, value }) {
 }
 
 export default function ProductLiveInspection({ session }) {
-  const { sample, data, report, online, active, onFrame } = session;
+  const { sample, data, report, online, active, onFrame, refresh, setErr } = session;
   const [truth, setTruth] = useState("");
+  const [baselineBusy, setBaselineBusy] = useState(false);
+  const [baselineMessage, setBaselineMessage] = useState("");
   const latest = data.sensors?.at(-1) || {};
   const latestImage = data.images?.[0] || null;
   const decision = report?.decision || {};
@@ -95,14 +165,33 @@ export default function ProductLiveInspection({ session }) {
   const captureActive = sample?.sample_id && active?.sample_id === sample.sample_id;
   const score = ready ? decision.freshness_score ?? data.fusion?.freshness_score : null;
   const visibleDamage = vision.defects?.visible_damage_estimate_pct;
+  const evidenceQuality = sensor?.health?.evidence_quality?.level || "unknown";
+  const gasDelta = sensor?.baseline_delta_raw;
+  const trend = sensor?.trend || {};
+  const warmup = sensor?.warmup || reading?.warmup || {};
 
   const frameFor = (view) =>
     data.images?.find((img) => img.angle === view || img.angle === `live-${view}`);
 
   const assistant = useMemo(
-    () => assistantMessage({ ready, label, viewsCount, sensorPresent, critic, fruit }),
-    [ready, label, viewsCount, sensorPresent, critic, fruit],
+    () => assistantMessage({ ready, label, viewsCount, sensorPresent, critic, fruit, sensor }),
+    [ready, label, viewsCount, sensorPresent, critic, fruit, sensor],
   );
+
+  const captureBaseline = async () => {
+    if (!sample?.sample_id || baselineBusy) return;
+    setBaselineBusy(true);
+    setBaselineMessage("");
+    try {
+      const result = await captureSensorBaseline(sample.sample_id);
+      setBaselineMessage(result?.instruction || "Empty-chamber baseline reading stored.");
+      await refresh();
+    } catch (error) {
+      setErr(error.message);
+    } finally {
+      setBaselineBusy(false);
+    }
+  };
 
   return (
     <div className="ffProductInspection">
@@ -135,9 +224,11 @@ export default function ProductLiveInspection({ session }) {
             <SmallChip icon={Thermometer} label="Temp" value={`${fmt(reading.temperature, 1)}°C`} />
             <SmallChip icon={Droplets} label="Humidity" value={`${fmt(reading.humidity, 0)}%`} />
             <SmallChip icon={Gauge} label="MQ135" value={fmt(reading.mq135_raw, 0)} />
+            <SmallChip icon={Activity} label="Gas Δ" value={gasDelta == null ? "No baseline" : `${gasDelta >= 0 ? "+" : ""}${fmt(gasDelta, 0)}`} />
             <SmallChip icon={Eye} label="Damage" value={visibleDamage == null ? "--" : `${fmt(visibleDamage, 0)}%`} />
             <SmallChip icon={Camera} label="Views" value={`${viewsCount}/3`} />
             <SmallChip icon={sensorPresent ? Wifi : WifiOff} label="ESP32" value={sensorPresent ? "Ready" : "Waiting"} />
+            <SmallChip icon={CheckCircle2} label="Evidence" value={title(evidenceQuality)} />
           </div>
         </div>
         <div className="ffScoreCard">
@@ -195,7 +286,7 @@ export default function ProductLiveInspection({ session }) {
         <aside className="ffAssistant ffPanel">
           <div className="ffAssistantTitle">
             <div className="ffAssistantIcon"><Sparkles size={18} /></div>
-            <div><span className="ffEyebrow">PROACTIVE ASSISTANT</span><h2>FreshFusion Assistant</h2></div>
+            <div><span className="ffEyebrow">PROACTIVE ASSISTANT · {title(assistant.severity)}</span><h2>FreshFusion Assistant</h2></div>
           </div>
           <div className="ffAssistantMessage">
             <div><b>What changed?</b><p>{assistant.changed}</p></div>
@@ -210,8 +301,33 @@ export default function ProductLiveInspection({ session }) {
             <input placeholder="Ask about this fruit..." disabled />
             <button disabled>Ask</button>
           </div>
-          <small className="ffMuted">Interactive Q&A is the next assistant layer; current messages are evidence-driven and proactive.</small>
+          <small className="ffMuted">Interactive Q&A is a later assistant layer; current messages are evidence-driven and proactive.</small>
         </aside>
+      </section>
+
+      <section className="ffEvidencePanel ffPanel">
+        <details open>
+          <summary><span><ChevronDown size={16} /> Sensor baseline & health</span><small>Operational measurement checks</small></summary>
+          <div className="ffTechnicalGrid">
+            <div><span>Warm-up</span><b>{title(warmup.state || "unknown")}</b></div>
+            <div><span>Baseline samples</span><b>{sensor?.baseline?.count ?? 0}</b></div>
+            <div><span>Baseline mean</span><b>{sensor?.baseline?.mq135_raw_mean == null ? "Not recorded" : `${fmt(sensor.baseline.mq135_raw_mean, 0)} ADC`}</b></div>
+            <div><span>Gas delta</span><b>{gasDelta == null ? "Not available" : `${gasDelta >= 0 ? "+" : ""}${fmt(gasDelta, 0)} ADC`}</b></div>
+            <div><span>Gas trend</span><b>{title(trend.direction || "insufficient data")}</b></div>
+            <div><span>Evidence quality</span><b>{title(evidenceQuality)}</b></div>
+          </div>
+          <div className="ffBaselineAction">
+            <div>
+              <b>Empty-chamber baseline</b>
+              <p>Remove the fruit, let the chamber settle, then record the current physical ESP32 reading. Capture at least three readings to check baseline stability.</p>
+            </div>
+            <button className="secondary" onClick={captureBaseline} disabled={!sample?.sample_id || baselineBusy || !online}>
+              {baselineBusy ? "Recording..." : "Record empty-chamber baseline"}
+            </button>
+          </div>
+          {baselineMessage && <p className="ffBaselineMessage">{baselineMessage}</p>}
+          <small className="ffMuted">Baseline values are local chamber references, not universal Apple/Banana/Tomato standards.</small>
+        </details>
       </section>
 
       <section className="ffEvidencePanel ffPanel">
@@ -224,6 +340,9 @@ export default function ProductLiveInspection({ session }) {
             <div><span>Recent views</span><b>{viewsCount}/3</b></div>
             <div><span>Evidence critic</span><b>{title(critic.status || "waiting")}</b></div>
             <div><span>Backend</span><b>{online ? "Online" : "Offline"}</b></div>
+            <div><span>Signal stuck check</span><b>{sensor?.health?.stuck_signal?.suspected ? "Check sensor" : sensor?.health?.stuck_signal?.checked ? "No issue seen" : "Need more readings"}</b></div>
+            <div><span>Baseline stability</span><b>{sensor?.baseline?.stable == null ? "Need 3+ baselines" : sensor.baseline.stable ? "Stable" : "Unstable"}</b></div>
+            <div><span>Trend rate</span><b>{trend.raw_per_minute == null ? "--" : `${fmt(trend.raw_per_minute, 1)} ADC/min`}</b></div>
           </div>
           <div className="ffTechnicalNotes">
             <p><b>MQ135:</b> shown as raw / relative evidence only, not calibrated ppm.</p>

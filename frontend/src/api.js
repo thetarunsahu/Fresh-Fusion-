@@ -130,6 +130,10 @@ export const pushReading = (payload) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+export const captureSensorBaseline = (sampleId) =>
+  json(`${API}/sensors/${encodeURIComponent(sampleId)}/baseline/from-latest`, {
+    method: "POST",
+  });
 export const datasetRegistry = (fruit) =>
   json(
     `${API}/datasets/registry${fruit ? `?fruit_type=${encodeURIComponent(fruit)}` : ""}`,
