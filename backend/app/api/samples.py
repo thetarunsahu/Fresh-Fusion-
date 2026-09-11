@@ -20,7 +20,7 @@ def create_sample(payload: SampleCreate, db: Session = Depends(get_db)):
     sample = FruitSample(sample_id=f"{prefix}-{secrets.token_hex(3).upper()}", fruit_type=payload.fruit_type, variety=payload.variety, source=payload.source)
     db.add(sample)
     db.flush()
-    db.add(InspectionProfile(sample_id=sample.sample_id, fruit_count=1, protocol={"chamber_purged": None, "inspection_duration_seconds": None}))
+    db.add(InspectionProfile(sample_id=sample.sample_id, fruit_count=1, protocol={"chamber_purged": None, "inspection_duration_seconds": None, "fruit_instance_id": None}))
     db.commit(); db.refresh(sample)
     set_active(db, sample)
     return sample
@@ -63,9 +63,11 @@ def get_profile(sample_id: str, db: Session = Depends(get_db)):
     if not row:
         row = InspectionProfile(sample_id=sample_id, fruit_count=1, protocol={})
         db.add(row); db.commit(); db.refresh(row)
+    protocol = dict(row.protocol or {})
     return {"sample_id": sample_id, "approximate_weight_g": row.approximate_weight_g, "fruit_count": row.fruit_count,
+            "fruit_instance_id": protocol.get("fruit_instance_id"),
             "batch_id": row.batch_id, "supplier": row.supplier, "storage_location": row.storage_location,
-            "protocol": row.protocol or {}, "updated_at": utc_iso(row.updated_at)}
+            "protocol": protocol, "updated_at": utc_iso(row.updated_at)}
 
 @router.put("/{sample_id}/profile")
 def update_profile(sample_id: str, payload: InspectionProfileIn, db: Session = Depends(get_db)):
@@ -83,6 +85,7 @@ def update_profile(sample_id: str, payload: InspectionProfileIn, db: Session = D
     row.supplier = data["supplier"]
     row.storage_location = data["storage_location"]
     protocol = dict(row.protocol or {})
+    protocol["fruit_instance_id"] = data["fruit_instance_id"]
     protocol["inspection_duration_seconds"] = data["inspection_duration_seconds"]
     protocol["chamber_purged"] = data["chamber_purged"]
     row.protocol = protocol
