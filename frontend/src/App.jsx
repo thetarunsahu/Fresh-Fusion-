@@ -4,7 +4,7 @@ import WorkspaceLayout from "./layout/WorkspaceLayout";
 import useInspection from "./hooks/useInspection";
 import Overview from "./features/overview/Overview";
 import OperatorDashboard from "./features/operator/OperatorDashboard";
-import LiveInspection from "./features/inspection/LiveInspection";
+import ProductLiveInspection from "./features/inspection/ProductLiveInspection";
 import Investigation from "./features/investigation/Investigation";
 import EvidenceTimeline from "./features/evidence/EvidenceTimeline";
 import Validation from "./features/validation/Validation";
@@ -151,7 +151,7 @@ export default function App() {
         <OperatorDashboard session={session} navigate={navigate} />
       )}
       {page === "inspection" && (
-        <LiveInspection
+        <ProductLiveInspection
           key={session.sample?.sample_id || "none"}
           session={session}
         />
