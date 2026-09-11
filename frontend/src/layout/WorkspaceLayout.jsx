@@ -6,9 +6,11 @@ import {
   Database,
   History,
   Leaf,
+  Store,
 } from "lucide-react";
 const pages = [
   ["overview", "Overview", LayoutDashboard],
+  ["operator", "Operator View", Store],
   ["inspection", "Live Inspection", ScanLine],
   ["investigation", "Investigation", Microscope],
   ["evidence", "Evidence", ListTree],
@@ -48,11 +50,11 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
           ))}
         </nav>
         <div className="sidebarNote">
-          <b>Evidence before conclusions.</b>
+          <b>Decision first. Evidence behind it.</b>
           <p>
-            Apple · Banana
+            Apple · Banana · Tomato
             <br />
-            Experimental SIH prototype
+            3-view experimental SIH prototype
           </p>
         </div>
       </aside>
@@ -60,8 +62,7 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
         <header className="workspaceToolbar">{toolbar}</header>
         <main id="main-content">{children}</main>
         <footer className="workspaceFooter">
-          Experimental assessment · Requires calibration and validation · No
-          food-safety certification
+          Experimental quality assessment · Requires calibration and validation · No food-safety certification
         </footer>
       </div>
     </div>
