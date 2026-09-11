@@ -1,4 +1,4 @@
-import { ArrowRight, Camera, Cpu, Database, Plus } from "lucide-react";
+import { ArrowRight, Camera, Cpu, Database, Plus, Store } from "lucide-react";
 import { Panel, StatusChip } from "../../shared/Panel";
 
 export default function Overview({ session, onStart, navigate, validation }) {
@@ -7,19 +7,24 @@ export default function Overview({ session, onStart, navigate, validation }) {
     <div className="featurePage">
       <div className="pageIntro">
         <span className="eyebrow">START HERE</span>
-        <h1>From a fruit to an evidence-backed assessment.</h1>
+        <h1>From fruit measurements to an actionable quality decision.</h1>
         <p>
-          FreshFusion investigates fruit quality using phone images, chamber
-          sensors and published visual references. Follow the evidence,
-          challenge the hypothesis, then record a human observation.
+          FreshFusion combines camera evidence, chamber sensors and reference
+          evidence, challenges the result, and then translates the assessment
+          into a simple operator action.
         </p>
-        <button
-          className="primary"
-          onClick={onStart}
-          disabled={session.busy || !session.online}
-        >
-          <Plus size={16} /> Start new inspection
-        </button>
+        <div className="buttonRow">
+          <button
+            className="primary"
+            onClick={onStart}
+            disabled={session.busy || !session.online}
+          >
+            <Plus size={16} /> Start new inspection
+          </button>
+          <button className="secondary" onClick={() => navigate("operator")}>
+            <Store size={15} /> Open operator view
+          </button>
+        </div>
       </div>
       {!session.online && (
         <div className="notice">
@@ -39,17 +44,17 @@ export default function Overview({ session, onStart, navigate, validation }) {
           [
             Camera,
             "Phone camera",
-            "Color, texture, visible defects and changed views",
+            "Three changed views for color, texture, visible defects and view consistency",
           ],
           [
             Cpu,
             "ESP32 sensors",
-            "Temperature, humidity and uncalibrated MQ135 raw",
+            "Temperature, humidity and uncalibrated MQ135 raw / relative response",
           ],
           [
             Database,
-            "Public reference",
-            "Cached feature similarity to published classes",
+            "Reference evidence",
+            "Cached feature similarity to published classes; similarity is not accuracy",
           ],
         ].map(([Icon, title, note]) => (
           <Panel key={title} title={title}>
@@ -59,8 +64,8 @@ export default function Overview({ session, onStart, navigate, validation }) {
         ))}
       </div>
       <Panel
-        title="The investigation workflow"
-        eyebrow="HOW EVIDENCE BECOMES AN ASSESSMENT"
+        title="The product workflow"
+        eyebrow="HOW EVIDENCE BECOMES AN ACTION"
       >
         <div className="flowStages">
           {[
@@ -68,23 +73,23 @@ export default function Overview({ session, onStart, navigate, validation }) {
             [
               "02",
               "Collect evidence",
-              "Capture changed views and current chamber readings.",
+              "Capture 3 changed views and current chamber readings.",
             ],
-            ["03", "Four analysts", "Vision · Sensor · Reference · Multi-view"],
+            ["03", "Independent analysis", "Vision · Sensor · Reference · Multi-view"],
             [
               "04",
               "Evidence critic",
-              "Check missing, inconsistent and stale evidence.",
+              "Check missing, inconsistent, stale or suspicious evidence.",
             ],
             [
               "05",
-              "Fusion / confidence",
-              "Release an experimental result only when eligible.",
+              "Decision",
+              "Release an experimental result only when evidence is eligible.",
             ],
             [
               "06",
-              "Human verification",
-              "Accept, disagree or add independent ground truth.",
+              "Operator action",
+              "Translate the result into sale, storage, reinspection or rejection guidance.",
             ],
           ].map(([n, title, note], i) => (
             <div className="flowStage" key={n}>
@@ -96,8 +101,9 @@ export default function Overview({ session, onStart, navigate, validation }) {
           ))}
         </div>
         <p className="footnote">
-          These are deterministic software modules. An LLM explanation layer is
-          future work; no LLM agents or trained identity model are claimed.
+          The proactive assistant explains backend evidence and recommendations;
+          it does not independently decide freshness. Internal texture is not
+          measured by the current prototype.
         </p>
       </Panel>
       <div className="twoPanels">
@@ -129,18 +135,21 @@ export default function Overview({ session, onStart, navigate, validation }) {
           <div className="chipRow">
             <StatusChip>Apple</StatusChip>
             <StatusChip>Banana</StatusChip>
+            <StatusChip>Tomato · manual selection</StatusChip>
             <StatusChip tone="warning">Experimental prototype</StatusChip>
           </div>
           <p>
-            Identity uses OpenCV rules and reference features. Raw gas is not
-            ppm, similarity is not accuracy, and physical-fruit checks are
+            Automatic identity is currently optimized for Apple and Banana.
+            Tomato can be selected manually for inspection, but fruit-specific
+            reference ranges and validated quality thresholds still require real
+            data collection. Raw gas is not ppm, and physical-fruit checks are
             probabilistic.
           </p>
           <button
             className="secondary"
-            onClick={() => navigate("investigation")}
+            onClick={() => navigate("operator")}
           >
-            Explore the analysts <ArrowRight size={15} />
+            See the operator decision <ArrowRight size={15} />
           </button>
         </Panel>
       </div>
