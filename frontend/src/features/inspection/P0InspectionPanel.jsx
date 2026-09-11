@@ -21,19 +21,20 @@ export default function P0InspectionPanel({ session }) {
   const events = product.events || [];
   const sourceProfile = product.profile || {};
   const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState({ fruit_count: 1, approximate_weight_g: "", inspection_duration_seconds: "", chamber_purged: "", batch_id: "", supplier: "", storage_location: "" });
+  const [profile, setProfile] = useState({ fruit_count: 1, approximate_weight_g: "", fruit_instance_id: "", inspection_duration_seconds: "", chamber_purged: "", batch_id: "", supplier: "", storage_location: "" });
 
   useEffect(() => {
     setProfile({
       fruit_count: sourceProfile.fruit_count ?? 1,
       approximate_weight_g: sourceProfile.approximate_weight_g ?? "",
+      fruit_instance_id: sourceProfile.fruit_instance_id ?? sourceProfile.protocol?.fruit_instance_id ?? "",
       inspection_duration_seconds: sourceProfile.protocol?.inspection_duration_seconds ?? "",
       chamber_purged: sourceProfile.protocol?.chamber_purged == null ? "" : String(sourceProfile.protocol.chamber_purged),
       batch_id: sourceProfile.batch_id ?? "",
       supplier: sourceProfile.supplier ?? "",
       storage_location: sourceProfile.storage_location ?? "",
     });
-  }, [session.sample?.sample_id, sourceProfile.approximate_weight_g, sourceProfile.fruit_count, sourceProfile.batch_id, sourceProfile.supplier, sourceProfile.storage_location, sourceProfile.protocol?.inspection_duration_seconds, sourceProfile.protocol?.chamber_purged]);
+  }, [session.sample?.sample_id, sourceProfile.approximate_weight_g, sourceProfile.fruit_count, sourceProfile.fruit_instance_id, sourceProfile.batch_id, sourceProfile.supplier, sourceProfile.storage_location, sourceProfile.protocol?.fruit_instance_id, sourceProfile.protocol?.inspection_duration_seconds, sourceProfile.protocol?.chamber_purged]);
 
   const qualityIssues = quality.issues || [];
   const recentAlerts = useMemo(() => events.slice(0, 5), [events]);
@@ -45,6 +46,7 @@ export default function P0InspectionPanel({ session }) {
       await updateInspectionProfile(session.sample.sample_id, {
         fruit_count: Number(profile.fruit_count || 1),
         approximate_weight_g: profile.approximate_weight_g === "" ? null : Number(profile.approximate_weight_g),
+        fruit_instance_id: profile.fruit_instance_id || null,
         inspection_duration_seconds: profile.inspection_duration_seconds === "" ? null : Number(profile.inspection_duration_seconds),
         chamber_purged: profile.chamber_purged === "" ? null : profile.chamber_purged === "true",
         batch_id: profile.batch_id || null,
@@ -100,6 +102,7 @@ export default function P0InspectionPanel({ session }) {
       <div className="p0Protocol">
         <div className="p0ProtocolHead"><div><span>MEASUREMENT PROTOCOL</span><h3>Keep every inspection comparable</h3></div><Status ok={protocol.ready !== false}>{protocol.ready === false ? "Protocol incomplete" : "Protocol ready / optional"}</Status></div>
         <div className="p0Form">
+          <label><PackageCheck size={14}/> Fruit specimen ID<input value={profile.fruit_instance_id} onChange={(e)=>setProfile({...profile, fruit_instance_id:e.target.value})} placeholder="e.g. APP-01"/></label>
           <label><PackageCheck size={14}/> Fruit count<input type="number" min="1" value={profile.fruit_count} onChange={(e)=>setProfile({...profile, fruit_count:e.target.value})}/></label>
           <label><Scale size={14}/> Approx. weight (g)<input type="number" min="1" value={profile.approximate_weight_g} onChange={(e)=>setProfile({...profile, approximate_weight_g:e.target.value})}/></label>
           <label><Clock3 size={14}/> Stabilization time (s)<input type="number" min="10" value={profile.inspection_duration_seconds} onChange={(e)=>setProfile({...profile, inspection_duration_seconds:e.target.value})}/></label>
@@ -109,6 +112,7 @@ export default function P0InspectionPanel({ session }) {
           <label>Storage location<input value={profile.storage_location} onChange={(e)=>setProfile({...profile, storage_location:e.target.value})}/></label>
           <button className="primary" onClick={save} disabled={saving || !session.online}>{saving ? "Saving..." : "Save inspection setup"}</button>
         </div>
+        <p className="p0Info">Use the same specimen ID when you re-inspect the same physical fruit. This keeps all of its views and repeated observations in one validation split.</p>
         {(protocol.issues?.length > 0 || protocol.warnings?.length > 0) && <div className="p0ProtocolNotes">{[...(protocol.issues||[]), ...(protocol.warnings||[])].map((x)=><span key={x}>{x}</span>)}</div>}
         {drift.checked && <p className={drift.suspected ? "p0Drift warn" : "p0Drift"}>Sensor drift: <b>{drift.suspected ? "Review required" : "Within historical band"}</b> · current baseline {num(drift.current_baseline_mean,0)} ADC vs historical {num(drift.historical_baseline_median,0)} ADC.</p>}
       </div>
