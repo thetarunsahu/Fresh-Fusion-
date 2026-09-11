@@ -109,6 +109,16 @@ export const investigationSnapshots = (id, limit = 20) =>
 export const activeSample = () => json(`${API}/samples/active`);
 export const activateSample = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/active`, { method: "PUT" });
+export const inspectionProfile = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/profile`);
+export const updateInspectionProfile = (id, payload) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+export const inspectionEvents = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/events?limit=100`);
 export const validationSummary = () => json(`${API}/datasets/validation`);
 export const createValidationRun = (name = "manual") =>
   json(`${API}/datasets/validation-runs?name=${encodeURIComponent(name)}`, {

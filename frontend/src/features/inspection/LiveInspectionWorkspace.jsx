@@ -1,4 +1,5 @@
 import ProductLiveInspection from "./ProductLiveInspection";
+import P0InspectionPanel from "./P0InspectionPanel";
 import LiveInspection from "./LiveInspection";
 import "./live-inspection-workspace.css";
 
@@ -6,6 +7,7 @@ export default function LiveInspectionWorkspace({ session }) {
   return (
     <>
       <ProductLiveInspection session={session} />
+      <P0InspectionPanel session={session} />
 
       <section className="ffRestoredEvidence">
         <div className="ffRestoredEvidenceHeader">

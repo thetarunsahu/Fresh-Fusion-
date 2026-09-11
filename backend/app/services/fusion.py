@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from ..models import FruitImage, FruitSample, FusionResult, SensorReading
 from .physical_validation import evaluate_physical_evidence
 from .sensor_assessment import assess_sensors, age_seconds
+from .inspection_events import record_assessment_changes
 
 RESULT_KEEP = max(40, int(os.getenv("FUSION_KEEP", "200")))
 
@@ -102,9 +103,6 @@ def evaluate_fusion(db: Session, sample: FruitSample) -> dict:
         if reference_matches:
             top_reference = max(reference_matches, key=lambda row: float(row.get("similarity") or 0.0))
 
-        # The vision score may be computed for debugging/reference comparison,
-        # but it only becomes eligible for the final verdict after physical
-        # multi-view verification.
         if validation.get("vision_verified"):
             vision_score = provisional_vision_score
 
@@ -143,8 +141,6 @@ def evaluate_fusion(db: Session, sample: FruitSample) -> dict:
         else:
             label, risk = "spoiled-suspected", "high"
     else:
-        # Keep DB compatibility with non-null freshness_score while making the
-        # state semantically explicit. Frontend hides this placeholder value.
         score = 50.0
         if validation.get("status") in {"suspected_2d_display", "suspected_flat_reference"}:
             label, risk = "physical-verification-failed", "unverified"
@@ -172,6 +168,7 @@ def evaluate_fusion(db: Session, sample: FruitSample) -> dict:
         ),
         components={
             "sensor": sensor_components,
+            "sensor_evidence": sensor_evidence,
             "vision": vision_components,
             "validation": validation,
             "critic": critic,
@@ -185,7 +182,7 @@ def compute_fusion(db: Session, sample: FruitSample) -> FusionResult:
     sample.status = result.label
     db.add(result)
     db.flush()
-    # Sensor-only updates must obey the same result retention as camera updates.
+    record_assessment_changes(db, result)
     stale = db.query(FusionResult).filter_by(sample_id=sample.sample_id).order_by(
         FusionResult.created_at.desc(), FusionResult.id.desc()
     ).offset(RESULT_KEEP).all()

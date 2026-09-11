@@ -1,4 +1,4 @@
-from ...models import FruitImage, SensorReading, FusionResult, HumanVerification
+from ...models import FruitImage, SensorReading, FusionResult, HumanVerification, InspectionEvent
 from ..sensor_assessment import assess_sensors, utc_iso, age_seconds, sensor_source
 from ..datasets import reference_index_status
 
@@ -15,6 +15,7 @@ def collect_evidence(db, sample, fusion):
     sensors = db.query(SensorReading).filter_by(sample_id=sample.sample_id).order_by(SensorReading.captured_at.desc()).limit(200).all()
     results = db.query(FusionResult).filter_by(sample_id=sample.sample_id).order_by(FusionResult.created_at.desc()).limit(100).all()
     reviews = db.query(HumanVerification).filter_by(sample_id=sample.sample_id).order_by(HumanVerification.created_at.desc()).all()
+    assistant_events = db.query(InspectionEvent).filter_by(sample_id=sample.sample_id).order_by(InspectionEvent.created_at.desc()).limit(100).all()
     image = images[0] if images else None
     analysis = (image.analysis or {}) if image else {}
     evidence = {
@@ -48,6 +49,9 @@ def collect_evidence(db, sample, fusion):
         validation = (row.components or {}).get("validation", {})
         events.append({"id": f"fusion-{row.id}", "at": utc_iso(row.created_at), "kind": "fusion", "title": "Fusion assessment recorded",
                        "detail": f"{row.label}; physical check: {validation.get('status', 'legacy result without current verification gate')}"})
+    for row in assistant_events:
+        events.append({"id": f"assistant-{row.id}", "at": utc_iso(row.created_at), "kind": "assistant",
+                       "title": row.message, "detail": f"Severity: {row.severity}; event: {row.event_type}"})
     for row in reviews:
         events.append({"id": f"review-{row.id}", "at": utc_iso(row.created_at), "kind": "human", "title": "Human verification recorded",
                        "detail": f"{row.action}: {row.ground_truth or row.notes or 'assessment reviewed'}"})
