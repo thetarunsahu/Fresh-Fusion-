@@ -6,6 +6,7 @@ from ..models import FruitImage, HumanVerification
 from ..services.ai import MODEL_PATH, LABELS_PATH
 from ..services.datasets import DATASETS, dataset_registry, reference_index_status
 from ..services.validation_metrics import compute_metrics, split_manifest
+from ..services.empirical_calibration import calibration_summary
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -23,6 +24,7 @@ def reference_status():
 @router.get("/validation")
 def validation(db: Session = Depends(get_db)):
     real = compute_metrics(db)
+    calibration = calibration_summary(db)
     metrics = {
         "accuracy": {"status": real["status"], "value": real["accuracy"]},
         "precision": {"status": real["status"], "value": real["macro_precision"]},
@@ -42,6 +44,7 @@ def validation(db: Session = Depends(get_db)):
         },
         "metrics": metrics,
         "validation": real,
+        "calibration": calibration,
         "claim_ready": real["claim_ready"],
         "label_policy": "FreshFusion human labels are stored separately from published reference classes. Metrics use only human ground truth paired with verified system decisions.",
         "split_policy": "Repeated views and repeated inspections should share a fruit_instance_id; deterministic split assignment then keeps that physical specimen in one train/validation/test partition.",
@@ -51,3 +54,8 @@ def validation(db: Session = Depends(get_db)):
 @router.get("/validation/manifest")
 def validation_manifest(db: Session = Depends(get_db)):
     return split_manifest(db)
+
+
+@router.get("/calibration")
+def calibration(db: Session = Depends(get_db)):
+    return calibration_summary(db)
