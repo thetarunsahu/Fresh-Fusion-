@@ -13,6 +13,7 @@ from ..models import FruitImage, FruitSample, HumanVerification
 from ..realtime import manager
 from ..services.fusion import compute_fusion
 from ..services.image_analysis import analyze_image
+from ..services.fruit_identity_extension import enhance_identity
 from ..services.inspection_control import active_sample, set_active
 from ..services.sensor_assessment import utc_iso
 
@@ -55,6 +56,12 @@ def _identity(analysis: dict) -> tuple[str, float]:
     return str(identity.get('fruit') or 'Unknown'), float(identity.get('confidence') or 0.0)
 
 
+def _required_identity_confidence(candidate: str) -> float:
+    # Tomato auto-routing is intentionally stricter because simple RGB/shape
+    # features can overlap with red apples.
+    return max(AUTO_IDENTITY_CONFIDENCE, 86.0) if candidate == 'Tomato' else AUTO_IDENTITY_CONFIDENCE
+
+
 def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> tuple[FruitSample, dict]:
     candidate, confidence = _identity(analysis)
     screen_suspicion = float(analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
@@ -70,7 +77,11 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
     if screen_suspicion >= AUTO_SCREEN_BLOCK:
         event['routing_blocked'] = 'suspected_screen_or_photo'
         return sample, event
-    if candidate not in {'Apple', 'Banana'} or confidence < AUTO_IDENTITY_CONFIDENCE:
+    threshold = _required_identity_confidence(candidate)
+    if candidate not in {'Apple', 'Banana', 'Tomato'} or confidence < threshold:
+        if candidate == 'Tomato':
+            event['routing_blocked'] = 'tomato_identity_needs_stronger_evidence'
+            event['required_confidence'] = threshold
         return sample, event
 
     current = (sample.fruit_type or 'Auto').strip().title()
@@ -89,6 +100,7 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
         .order_by(FruitImage.uploaded_at.desc())
         .limit(2).all())
     stable = []
+    stable_threshold = max(64.0, threshold - 8.0)
     for row in recent:
         row_analysis = row.analysis or {}
         row_candidate, row_confidence = _identity(row_analysis)
@@ -96,7 +108,7 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
         if (
             row_analysis.get('quality', {}).get('fruit_present') is True
             and row_candidate == candidate
-            and row_confidence >= max(64.0, AUTO_IDENTITY_CONFIDENCE - 8.0)
+            and row_confidence >= stable_threshold
             and row_screen < AUTO_SCREEN_BLOCK
         ):
             stable.append(row)
@@ -152,7 +164,9 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
     try:
         with Image.open(path) as im:
             width, height = im.size
-        analysis = _relative_artifacts(await run_in_threadpool(analyze_image, path, sample.fruit_type))
+        analysis = await run_in_threadpool(analyze_image, path, sample.fruit_type)
+        analysis = enhance_identity(analysis, sample.fruit_type)
+        analysis = _relative_artifacts(analysis)
     except Exception as exc:
         path.unlink(missing_ok=True)
         raise HTTPException(400, f'Image analysis failed: {exc}')
