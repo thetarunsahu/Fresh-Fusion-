@@ -54,6 +54,7 @@ class SampleOut(BaseModel):
 class InspectionProfileIn(BaseModel):
     approximate_weight_g: float | None = Field(default=None, gt=0, le=100000)
     fruit_count: int = Field(default=1, ge=1, le=500)
+    fruit_instance_id: str | None = Field(default=None, max_length=80)
     batch_id: str | None = Field(default=None, max_length=80)
     supplier: str | None = Field(default=None, max_length=120)
     storage_location: str | None = Field(default=None, max_length=120)
