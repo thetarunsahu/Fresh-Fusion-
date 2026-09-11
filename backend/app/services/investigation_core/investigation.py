@@ -1,6 +1,7 @@
 from ..fusion import evaluate_fusion
-from ...models import FusionResult, InspectionProfile
+from ...models import FruitImage, FusionResult, InspectionProfile
 from ..inspection_events import recent_events
+from ..image_quality_gate import evaluate_image_quality
 from ..product_rules import recommendation, score_breakdown
 from .evidence import collect_evidence, sample_info
 from .analysts import summarize_analysts
@@ -37,6 +38,19 @@ def investigate(db, sample):
     fusion = evaluate_fusion(db, sample)
     evidence, timeline, verifications = collect_evidence(db, sample, fusion)
     decision = decision_from_fusion(fusion)
+    images = db.query(FruitImage).filter_by(sample_id=sample.sample_id).order_by(FruitImage.uploaded_at.desc()).limit(30).all()
+    image_quality = evaluate_image_quality(images)
+    if image_quality["blocking"] and decision.get("verdict_ready"):
+        decision = {
+            **decision,
+            "status": "MORE EVIDENCE REQUIRED",
+            "verdict_ready": False,
+            "label": None,
+            "freshness_score": None,
+            "confidence": None,
+            "risk": "unverified",
+            "reason": " ".join(image_quality["issues"]),
+        }
     analysts = summarize_analysts(evidence, fusion)
     vision = analysts.get("vision", {})
     fruit = (vision.get("identity") or {}).get("fruit") or sample.fruit_type
@@ -55,6 +69,7 @@ def investigate(db, sample):
             "score_breakdown": score_breakdown(fusion),
             "condition_comparison": _condition_comparison(db, sample.sample_id, fusion),
             "profile": _profile_info(db, sample.sample_id),
+            "image_quality": image_quality,
             "events": recent_events(db, sample.sample_id, 30),
         },
         "timeline": timeline,
