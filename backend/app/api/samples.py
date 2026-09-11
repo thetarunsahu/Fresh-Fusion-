@@ -10,7 +10,7 @@ from ..services.sensor_assessment import serialize_sensor, utc_iso
 from ..services.inspection_control import active_sample, set_active
 from ..services.investigation_core.investigation import investigate
 from ..services.investigation_core.evidence import sample_info, verification_info
-from ..services.inspection_events import recent_events
+from ..services.inspection_events import recent_events, record_event
 
 router = APIRouter(prefix="/samples", tags=["samples"])
 
@@ -110,6 +110,27 @@ def verify(sample_id: str, payload: VerificationIn, db: Session = Depends(get_db
                 "evidence_sensor_id": (summary["evidence"]["sensors"]["latest"] or {}).get("id")}
     row = HumanVerification(sample_id=sample_id, **payload.model_dump(), assessment=snapshot)
     db.add(row)
+    event_type = "human_override" if payload.action == "override" else "human_verification"
+    event_message = (
+        f"Human override recorded as {payload.ground_truth}."
+        if payload.action == "override"
+        else f"Human verification recorded: {payload.action}."
+    )
+    record_event(
+        db,
+        sample_id,
+        event_type,
+        event_message,
+        severity="warning" if payload.action == "override" else "info",
+        payload={
+            "action": payload.action,
+            "ground_truth": payload.ground_truth,
+            "reviewer": payload.reviewer,
+            "notes": payload.notes,
+            "system_label": snapshot.get("label"),
+            "system_score": snapshot.get("freshness_score"),
+        },
+    )
     db.commit()
     db.refresh(row)
     return verification_info(row)
