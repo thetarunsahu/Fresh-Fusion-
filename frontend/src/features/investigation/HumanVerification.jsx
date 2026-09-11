@@ -9,7 +9,12 @@ export default function HumanVerification({ sampleId, report, onSaved }) {
   const [reviewer, setReviewer] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+
   const save = async (action) => {
+    if (action === "override" && (!label || notes.trim().length < 3)) {
+      setMessage("Choose the observed label and add a short reason before overriding the system result.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -20,7 +25,9 @@ export default function HumanVerification({ sampleId, report, onSaved }) {
         reviewer,
       });
       setMessage(
-        "Human observation saved separately from the system assessment.",
+        action === "override"
+          ? "Manual override saved with its reason and system-assessment snapshot."
+          : "Human observation saved separately from the system assessment.",
       );
       await onSaved();
     } catch (error) {
@@ -29,77 +36,42 @@ export default function HumanVerification({ sampleId, report, onSaved }) {
       setBusy(false);
     }
   };
+
   return (
-    <Panel
-      title="Human verification"
-      eyebrow="YOUR OBSERVATION IS SEPARATE EVIDENCE"
-    >
+    <Panel title="Human verification" eyebrow="HUMAN OBSERVATION · AUDITABLE">
       <p>
-        Accepting a result does not validate model accuracy. Ground truth is a
-        human observation for this inspection; it does not rewrite public
-        reference labels or automatically label every image.
+        Human observations stay separate from the system result. Ground truth is used for validation; an override records an explicit human decision without rewriting the original FreshFusion evidence.
       </p>
       <div className="reviewFields">
         <label>
-          Reviewer (optional)
-          <input
-            value={reviewer}
-            maxLength={100}
-            onChange={(e) => setReviewer(e.target.value)}
-            placeholder="Name or team initials"
-          />
+          Reviewer
+          <input value={reviewer} maxLength={100} onChange={(e) => setReviewer(e.target.value)} placeholder="Name or team initials" />
         </label>
         <label>
           Observed ground truth
           <select value={label} onChange={(e) => setLabel(e.target.value)}>
             <option value="">Choose a label</option>
-            {["fresh", "ripe", "overripe", "spoiled"].map((x) => (
-              <option key={x} value={x}>
-                {x[0].toUpperCase() + x.slice(1)}
-              </option>
-            ))}
+            {["fresh", "ripe", "overripe", "spoiled"].map((x) => <option key={x} value={x}>{x[0].toUpperCase() + x.slice(1)}</option>)}
           </select>
         </label>
         <label className="wide">
-          Observation notes
-          <textarea
-            value={notes}
-            maxLength={2000}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Record visible condition, disagreements or the labelling protocol."
-          />
+          Observation / override reason
+          <textarea value={notes} maxLength={2000} onChange={(e) => setNotes(e.target.value)} placeholder="Record visible condition, disagreement, labelling protocol or why a manual override is necessary." />
         </label>
       </div>
       <div className="buttonRow">
-        <button
-          className="primary"
-          disabled={busy || !sampleId || !report?.decision?.verdict_ready}
-          onClick={() => save("accept")}
-        >
-          Accept system assessment
-        </button>
-        <button
-          className="secondary"
-          disabled={busy || !sampleId || !report}
-          onClick={() => save("incorrect")}
-        >
-          Mark as incorrect
-        </button>
-        <button
-          className="secondary"
-          disabled={busy || !sampleId || !label}
-          onClick={() => save("ground_truth")}
-        >
-          Add ground truth
-        </button>
+        <button className="primary" disabled={busy || !sampleId || !report?.decision?.verdict_ready} onClick={() => save("accept")}>Accept system assessment</button>
+        <button className="secondary" disabled={busy || !sampleId || !report} onClick={() => save("incorrect")}>Mark as incorrect</button>
+        <button className="secondary" disabled={busy || !sampleId || !label} onClick={() => save("ground_truth")}>Add ground truth</button>
+        <button className="secondary" disabled={busy || !sampleId || !label || notes.trim().length < 3} onClick={() => save("override")}>Manual override</button>
       </div>
       {message && <p role="status">{message}</p>}
       <div className="reviewList">
-        {report?.human_verifications?.slice(0, 5).map((row) => (
+        {report?.human_verifications?.slice(0, 8).map((row) => (
           <div key={row.id}>
-            <StatusChip>{row.action.replaceAll("_", " ")}</StatusChip>
+            <StatusChip tone={row.action === "override" ? "warning" : "neutral"}>{row.action.replaceAll("_", " ")}</StatusChip>
             <b>{row.ground_truth || "Assessment reviewed"}</b>
-            <span>{dateTime(row.created_at)}</span>
+            <span>{row.reviewer ? `${row.reviewer} · ` : ""}{dateTime(row.created_at)}</span>
             {row.notes && <p>{row.notes}</p>}
           </div>
         ))}
