@@ -3,13 +3,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from ..database import get_db
-from ..models import FruitImage, FruitSample, FusionResult, SensorReading, HumanVerification
-from ..schemas import SampleCreate, SampleOut, VerificationIn
+from ..models import FruitImage, FruitSample, FusionResult, SensorReading, HumanVerification, InspectionProfile
+from ..schemas import SampleCreate, SampleOut, VerificationIn, InspectionProfileIn
 from ..services.fusion import compute_fusion, evaluate_fusion
 from ..services.sensor_assessment import serialize_sensor, utc_iso
 from ..services.inspection_control import active_sample, set_active
 from ..services.investigation_core.investigation import investigate
 from ..services.investigation_core.evidence import sample_info, verification_info
+from ..services.inspection_events import recent_events
 
 router = APIRouter(prefix="/samples", tags=["samples"])
 
@@ -18,6 +19,8 @@ def create_sample(payload: SampleCreate, db: Session = Depends(get_db)):
     prefix = payload.fruit_type[:3].upper() or "FRT"
     sample = FruitSample(sample_id=f"{prefix}-{secrets.token_hex(3).upper()}", fruit_type=payload.fruit_type, variety=payload.variety, source=payload.source)
     db.add(sample)
+    db.flush()
+    db.add(InspectionProfile(sample_id=sample.sample_id, fruit_count=1, protocol={"chamber_purged": None, "inspection_duration_seconds": None}))
     db.commit(); db.refresh(sample)
     set_active(db, sample)
     return sample
@@ -50,6 +53,47 @@ def activate(sample_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Sample not found")
     set_active(db, sample)
     return sample_info(sample)
+
+@router.get("/{sample_id}/profile")
+def get_profile(sample_id: str, db: Session = Depends(get_db)):
+    sample = db.query(FruitSample).filter_by(sample_id=sample_id).first()
+    if not sample:
+        raise HTTPException(404, "Sample not found")
+    row = db.query(InspectionProfile).filter_by(sample_id=sample_id).first()
+    if not row:
+        row = InspectionProfile(sample_id=sample_id, fruit_count=1, protocol={})
+        db.add(row); db.commit(); db.refresh(row)
+    return {"sample_id": sample_id, "approximate_weight_g": row.approximate_weight_g, "fruit_count": row.fruit_count,
+            "batch_id": row.batch_id, "supplier": row.supplier, "storage_location": row.storage_location,
+            "protocol": row.protocol or {}, "updated_at": utc_iso(row.updated_at)}
+
+@router.put("/{sample_id}/profile")
+def update_profile(sample_id: str, payload: InspectionProfileIn, db: Session = Depends(get_db)):
+    sample = db.query(FruitSample).filter_by(sample_id=sample_id).first()
+    if not sample:
+        raise HTTPException(404, "Sample not found")
+    row = db.query(InspectionProfile).filter_by(sample_id=sample_id).first()
+    if not row:
+        row = InspectionProfile(sample_id=sample_id, fruit_count=1, protocol={})
+        db.add(row)
+    data = payload.model_dump()
+    row.approximate_weight_g = data["approximate_weight_g"]
+    row.fruit_count = data["fruit_count"]
+    row.batch_id = data["batch_id"]
+    row.supplier = data["supplier"]
+    row.storage_location = data["storage_location"]
+    protocol = dict(row.protocol or {})
+    protocol["inspection_duration_seconds"] = data["inspection_duration_seconds"]
+    protocol["chamber_purged"] = data["chamber_purged"]
+    row.protocol = protocol
+    db.commit(); db.refresh(row)
+    return get_profile(sample_id, db)
+
+@router.get("/{sample_id}/events")
+def events(sample_id: str, limit: int = 50, db: Session = Depends(get_db)):
+    if not db.query(FruitSample).filter_by(sample_id=sample_id).first():
+        raise HTTPException(404, "Sample not found")
+    return recent_events(db, sample_id, min(limit, 200))
 
 @router.post("/{sample_id}/verification", status_code=201)
 def verify(sample_id: str, payload: VerificationIn, db: Session = Depends(get_db)):
