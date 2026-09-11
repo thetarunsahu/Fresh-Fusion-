@@ -35,7 +35,7 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
             <small>Fruit Quality Investigation</small>
           </span>
         </a>
-        <span className="navCaption">INVESTIGATION WORKSPACE</span>
+        <span className="navCaption">INSPECTION WORKSPACE</span>
         <nav aria-label="Main navigation">
           {pages.map(([id, label, Icon]) => (
             <button
@@ -54,7 +54,7 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
           <p>
             Apple · Banana · Tomato
             <br />
-            3-view experimental SIH prototype
+            3-view multimodal inspection
           </p>
         </div>
       </aside>
@@ -62,7 +62,7 @@ export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
         <header className="workspaceToolbar">{toolbar}</header>
         <main id="main-content">{children}</main>
         <footer className="workspaceFooter">
-          Experimental quality assessment · Requires calibration and validation · No food-safety certification
+          Quality assessment decision support · Calibration status is shown with each result · Not a food-safety certification
         </footer>
       </div>
     </div>

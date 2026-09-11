@@ -51,9 +51,9 @@ function assistantMessage({
   if (sensor?.warmup?.ready === false) {
     return {
       severity: "warning",
-      changed: "The gas sensor is still inside the prototype warm-up period.",
-      meaning: "Its current gas reading should not be used as reliable fruit evidence yet.",
-      action: "Keep the chamber empty and wait for the warm-up indicator to become ready.",
+      changed: "The gas sensor is still warming up.",
+      meaning: "Its current reading should not be used as reliable fruit evidence yet.",
+      action: "Keep the chamber empty and wait until the sensor is ready.",
     };
   }
   if (sensor?.health?.stuck_signal?.suspected) {
@@ -100,7 +100,7 @@ function assistantMessage({
     return {
       severity: "warning",
       changed: "The evidence check found a conflict or missing requirement.",
-      meaning: "FreshFusion is deliberately holding the final result instead of guessing.",
+      meaning: "FreshFusion is holding the final result until the evidence is consistent.",
       action: "Follow the highlighted evidence request, then inspect again.",
     };
   }
@@ -234,7 +234,7 @@ export default function ProductLiveInspection({ session }) {
         <div className="ffScoreCard">
           <span>Evidence score</span>
           <strong>{score == null ? "--" : Math.round(score)}</strong>
-          <small>{score == null ? "Released only after evidence checks" : "/100 experimental"}</small>
+          <small>{score == null ? "Released after evidence checks" : "/100 · calibration pending"}</small>
         </div>
       </section>
 
@@ -295,19 +295,19 @@ export default function ProductLiveInspection({ session }) {
           </div>
           <div className="ffAssistantFacts">
             <span><MessageCircle size={14} /> Updates automatically as evidence changes.</span>
-            <span><ShieldAlert size={14} /> Internal quality is not measured in the current prototype.</span>
+            <span><ShieldAlert size={14} /> Internal quality is not measured with the current sensing setup.</span>
           </div>
           <div className="ffAskBox">
             <input placeholder="Ask about this fruit..." disabled />
             <button disabled>Ask</button>
           </div>
-          <small className="ffMuted">Interactive Q&A is a later assistant layer; current messages are evidence-driven and proactive.</small>
+          <small className="ffMuted">Live guidance updates automatically from the current inspection evidence.</small>
         </aside>
       </section>
 
       <section className="ffEvidencePanel ffPanel">
         <details open>
-          <summary><span><ChevronDown size={16} /> Sensor baseline & health</span><small>Operational measurement checks</small></summary>
+          <summary><span><ChevronDown size={16} /> Sensor baseline & health</span><small>Measurement status</small></summary>
           <div className="ffTechnicalGrid">
             <div><span>Warm-up</span><b>{title(warmup.state || "unknown")}</b></div>
             <div><span>Baseline samples</span><b>{sensor?.baseline?.count ?? 0}</b></div>
@@ -332,22 +332,22 @@ export default function ProductLiveInspection({ session }) {
 
       <section className="ffEvidencePanel ffPanel">
         <details>
-          <summary><span><ChevronDown size={16} /> Technical evidence</span><small>For jury / QA / engineering review</small></summary>
+          <summary><span><ChevronDown size={16} /> Technical evidence</span><small>Detailed measurement data</small></summary>
           <div className="ffTechnicalGrid">
             <div><span>Temperature</span><b>{fmt(reading.temperature, 1)}°C</b></div>
             <div><span>Humidity</span><b>{fmt(reading.humidity, 0)}%</b></div>
             <div><span>MQ135 raw</span><b>{fmt(reading.mq135_raw, 0)} ADC</b></div>
             <div><span>Recent views</span><b>{viewsCount}/3</b></div>
-            <div><span>Evidence critic</span><b>{title(critic.status || "waiting")}</b></div>
-            <div><span>Backend</span><b>{online ? "Online" : "Offline"}</b></div>
-            <div><span>Signal stuck check</span><b>{sensor?.health?.stuck_signal?.suspected ? "Check sensor" : sensor?.health?.stuck_signal?.checked ? "No issue seen" : "Need more readings"}</b></div>
+            <div><span>Evidence check</span><b>{title(critic.status || "waiting")}</b></div>
+            <div><span>System connection</span><b>{online ? "Online" : "Offline"}</b></div>
+            <div><span>Signal health</span><b>{sensor?.health?.stuck_signal?.suspected ? "Check sensor" : sensor?.health?.stuck_signal?.checked ? "No issue seen" : "Need more readings"}</b></div>
             <div><span>Baseline stability</span><b>{sensor?.baseline?.stable == null ? "Need 3+ baselines" : sensor.baseline.stable ? "Stable" : "Unstable"}</b></div>
             <div><span>Trend rate</span><b>{trend.raw_per_minute == null ? "--" : `${fmt(trend.raw_per_minute, 1)} ADC/min`}</b></div>
           </div>
           <div className="ffTechnicalNotes">
             <p><b>MQ135:</b> shown as raw / relative evidence only, not calibrated ppm.</p>
-            <p><b>Internal quality:</b> not measured by the current camera + DHT11 + MQ135 prototype.</p>
-            <p><b>Usable life:</b> intentionally not estimated until a labelled time-series dataset supports it.</p>
+            <p><b>Internal quality:</b> not measured with the current camera + DHT11 + MQ135 sensing setup.</p>
+            <p><b>Usable life:</b> shown only after calibration with labelled time-series data.</p>
           </div>
         </details>
       </section>
