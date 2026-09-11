@@ -95,15 +95,17 @@ class SensorIn(BaseModel):
 
 
 class VerificationIn(BaseModel):
-    action: Literal["accept", "incorrect", "ground_truth"]
+    action: Literal["accept", "incorrect", "ground_truth", "override"]
     ground_truth: Literal["fresh", "ripe", "overripe", "spoiled"] | None = None
     notes: str = Field(default="", max_length=2000)
     reviewer: str = Field(default="", max_length=100)
 
     @model_validator(mode="after")
     def require_label(self):
-        if self.action == "ground_truth" and self.ground_truth is None:
+        if self.action in {"ground_truth", "override"} and self.ground_truth is None:
             raise ValueError("Choose a FreshFusion ground-truth label")
+        if self.action == "override" and len(self.notes.strip()) < 3:
+            raise ValueError("Explain why the system assessment is being overridden")
         return self
 
 
