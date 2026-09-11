@@ -1,66 +1,68 @@
 import {
-  Bot,
+  LayoutDashboard,
+  ScanLine,
+  Microscope,
+  ListTree,
   Database,
   History,
-  LayoutDashboard,
-  Microscope,
-  ScanLine,
-  Settings2,
-  ShieldCheck,
+  Leaf,
+  Store,
 } from "lucide-react";
-
 const pages = [
   ["overview", "Overview", LayoutDashboard],
+  ["operator", "Operator View", Store],
   ["inspection", "Live Inspection", ScanLine],
   ["investigation", "Investigation", Microscope],
-  ["ai", "AI Copilot", Bot],
+  ["evidence", "Evidence", ListTree],
   ["validation", "Dataset & Validation", Database],
-  ["history", "History & Evidence", History],
-  ["system", "System", Settings2],
+  ["history", "History", History],
 ];
 
 export default function WorkspaceLayout({ page, navigate, children, toolbar }) {
   return (
     <div className="workspace">
       <aside className="workspaceSidebar">
-        <a className="workspaceBrand" href="#overview" onClick={() => navigate("overview")}>
-          <span className="logoMark ffTextLogo">FF</span>
-          <span className="brandCopy">
+        <a
+          className="workspaceBrand"
+          href="#overview"
+          onClick={() => navigate("overview")}
+        >
+          <span className="logoMark">
+            <Leaf size={21} />
+          </span>
+          <span>
             <b>FreshFusion</b>
-            <small>Fruit Quality Intelligence</small>
+            <small>Fruit Quality Investigation</small>
           </span>
         </a>
-
+        <span className="navCaption">INVESTIGATION WORKSPACE</span>
         <nav aria-label="Main navigation">
           {pages.map(([id, label, Icon]) => (
             <button
               key={id}
               className={page === id ? "active" : ""}
-              aria-label={label}
               aria-current={page === id ? "page" : undefined}
               onClick={() => navigate(id)}
             >
-              <span className="navIcon"><Icon size={16} /></span>
-              <span className="navLabel">{label}</span>
+              <Icon size={18} />
+              {label}
             </button>
           ))}
         </nav>
-
         <div className="sidebarNote">
-          <div className="sidebarNoteTitle">
-            <ShieldCheck size={14} />
-            <b>EVIDENCE FIRST</b>
-          </div>
-          <p>Experimental assessment<br />Calibration required</p>
+          <b>Decision first. Evidence behind it.</b>
+          <p>
+            Apple · Banana · Tomato
+            <br />
+            3-view experimental SIH prototype
+          </p>
         </div>
       </aside>
-
       <div className="workspaceMain">
         <header className="workspaceToolbar">{toolbar}</header>
         <main id="main-content">{children}</main>
         <footer className="workspaceFooter">
-          <span>FreshFusion · Evidence-grounded fruit quality investigation</span>
-          <span>Experimental assessment · Calibration required · No food-safety certification</span>
+          Experimental quality assessment · Requires calibration and validation · No food-safety certification
         </footer>
       </div>
     </div>

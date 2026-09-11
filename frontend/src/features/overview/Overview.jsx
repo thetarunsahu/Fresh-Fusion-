@@ -1,228 +1,157 @@
-import {
-  ArrowRight,
-  Bot,
-  Camera,
-  Plus,
-  ScanSearch,
-  ShieldCheck,
-} from "lucide-react";
-import { StatusChip } from "../../shared/Panel";
-import { fmt, titleCase } from "../../shared/format";
-
-function stateLabel(ok, online) {
-  if (ok) return "Ready";
-  return online ? "Waiting" : "Offline";
-}
-
-function MetricCard({ label, value, note, tone = "good" }) {
-  return (
-    <article className="ffMetricCard">
-      <div className="ffMetricHead">
-        <span>{label}</span>
-        <i className={`ffMetricDot ${tone}`} aria-hidden="true" />
-      </div>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </article>
-  );
-}
+import { ArrowRight, Camera, Cpu, Database, Plus, Store } from "lucide-react";
+import { Panel, StatusChip } from "../../shared/Panel";
 
 export default function Overview({ session, onStart, navigate, validation }) {
-  const report = session.report;
-  const evidence = report?.evidence;
-  const cameraRecent = evidence?.camera?.recent === true;
-  const sensorRecent = evidence?.sensors?.physical_present === true;
-  const storedImage = session.data?.images?.[0] || null;
-  const latestImage = cameraRecent ? storedImage : null;
-  const storedSensor = session.data?.sensors?.at(-1) || {};
-  const latestSensor = sensorRecent ? storedSensor : {};
-  const vision = report?.analysts?.vision || {};
-  const multi = report?.analysts?.multiview || {};
-  const decision = report?.decision || {};
-  const critic = report?.critic || {};
-  const capturedViews = multi.views || [];
-  const fruit =
-    cameraRecent && vision.identity?.fruit && vision.identity.fruit !== "Unknown"
-      ? vision.identity.fruit
-      : session.sample?.fruit_type && session.sample.fruit_type !== "Auto"
-        ? session.sample.fruit_type
-        : "Waiting";
-
-  const signals = [
-    ["Camera evidence", cameraRecent],
-    ["ESP32 telemetry", sensorRecent],
-    ["Reference index", Boolean(validation?.reference_index?.ready)],
-    ["RAG context", Boolean(report)],
-  ];
-
-  const metricCards = [
-    [
-      "Temperature",
-      latestSensor.temperature == null ? "—" : `${fmt(latestSensor.temperature)} °C`,
-      latestSensor.temperature == null ? "Waiting for recent hardware" : "Recent physical reading",
-      latestSensor.temperature == null ? "neutral" : "good",
-    ],
-    [
-      "Humidity",
-      latestSensor.humidity == null ? "—" : `${fmt(latestSensor.humidity)}% RH`,
-      latestSensor.humidity == null ? "Waiting for recent DHT11 data" : "Recent chamber state",
-      latestSensor.humidity == null ? "neutral" : "good",
-    ],
-    [
-      "MQ135 raw",
-      latestSensor.mq135_raw == null ? "—" : `${fmt(latestSensor.mq135_raw, 0)} ADC`,
-      latestSensor.mq135_raw == null ? "Waiting for recent hardware" : "Uncalibrated relative signal",
-      latestSensor.mq135_raw == null ? "neutral" : "warning",
-    ],
-    ["Fruit identity", fruit, cameraRecent ? "Recent vision evidence" : "Selected inspection / waiting for camera", fruit === "Waiting" ? "neutral" : "good"],
-    [
-      "Assessment",
-      decision.verdict_ready ? titleCase(decision.label) : "More evidence",
-      decision.verdict_ready ? "Experimental assessment" : "Verdict currently locked",
-      decision.verdict_ready ? "good" : "warning",
-    ],
-  ];
-
-  const analystRows = [
-    ["Vision Analyst", "Surface + identity", cameraRecent && vision.identity?.confidence != null ? `${fmt(vision.identity.confidence, 0)}%` : "Waiting"],
-    ["Sensor Analyst", "Temp / RH / MQ135", sensorRecent ? "Valid" : "Waiting"],
-    ["Reference Analyst", "Retrieved class context", report?.analysts?.reference?.index?.ready ? "Ready" : "Waiting"],
-    ["Multi-view Analyst", "Physical consistency", `${capturedViews.length} / ${multi.required_views ?? 3}`],
-  ];
-
+  const evidence = session.report?.evidence;
   return (
-    <div className="featurePage overviewPage ffOverviewPage">
-      <div className="ffPageHeading">
-        <span className="eyebrow">OVERVIEW</span>
-        <h1>FreshFusion Investigation Workspace</h1>
+    <div className="featurePage">
+      <div className="pageIntro">
+        <span className="eyebrow">START HERE</span>
+        <h1>From fruit measurements to an actionable quality decision.</h1>
+        <p>
+          FreshFusion combines camera evidence, chamber sensors and reference
+          evidence, challenges the result, and then translates the assessment
+          into a simple operator action.
+        </p>
+        <div className="buttonRow">
+          <button
+            className="primary"
+            onClick={onStart}
+            disabled={session.busy || !session.online}
+          >
+            <Plus size={16} /> Start new inspection
+          </button>
+          <button className="secondary" onClick={() => navigate("operator")}>
+            <Store size={15} /> Open operator view
+          </button>
+        </div>
       </div>
-
-      <section className="ffOverviewHero">
-        <div className="ffOverviewHeroCopy">
-          <span className="eyebrow">EVIDENCE-GROUNDED MULTIMODAL INSPECTION</span>
-          <h2>Inspect the fruit.<br />Challenge the evidence.</h2>
-          <p>
-            Phone vision, chamber telemetry, reference retrieval and deterministic
-            critique before any experimental freshness assessment is released.
-          </p>
-          <div className="buttonRow">
-            <button className="primary" onClick={onStart} disabled={session.busy || !session.online}>
-              <Plus size={16} /> New inspection
-            </button>
-            <button className="secondary" onClick={() => navigate("investigation")}>
-              <ScanSearch size={15} /> Explore investigation
-            </button>
-          </div>
-        </div>
-        <div className="ffReadinessCard">
-          <div className="ffReadinessHead">
-            <div>
-              <span className="eyebrow">SYSTEM READINESS</span>
-              <strong>{session.online ? "FreshFusion online" : "Backend required"}</strong>
-            </div>
-            <StatusChip tone={session.online ? "good" : "neutral"}>
-              {session.online ? "CONNECTED" : "OFFLINE"}
-            </StatusChip>
-          </div>
-          <div className="ffReadinessRows">
-            {signals.map(([label, ok]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <b className={ok ? "ready" : "waiting"}>{stateLabel(ok, session.online)}</b>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {!session.online && (
-        <div className="notice ffInlineNotice">
-          No demonstration measurements are generated. Start the backend to collect real evidence.
+        <div className="notice">
+          <b>
+            Explore the workflow now. Connect the backend to collect evidence.
+          </b>
+          <p>
+            The frontend works on its own for orientation; no demonstration data
+            is generated. Run <code>.\start_freshfusion.ps1</code> from the
+            repository root for the complete phone + ESP32 system, or follow the
+            README for separate backend startup.
+          </p>
         </div>
       )}
-
-      <section className="ffMetricGrid">
-        {metricCards.map(([label, value, note, tone]) => (
-          <MetricCard key={label} label={label} value={value} note={note} tone={tone} />
+      <div className="sourceGrid">
+        {[
+          [
+            Camera,
+            "Phone camera",
+            "Three changed views for color, texture, visible defects and view consistency",
+          ],
+          [
+            Cpu,
+            "ESP32 sensors",
+            "Temperature, humidity and uncalibrated MQ135 raw / relative response",
+          ],
+          [
+            Database,
+            "Reference evidence",
+            "Cached feature similarity to published classes; similarity is not accuracy",
+          ],
+        ].map(([Icon, title, note]) => (
+          <Panel key={title} title={title}>
+            <Icon size={25} />
+            <p>{note}</p>
+          </Panel>
         ))}
-      </section>
-
-      <section className="ffOverviewMainGrid">
-        <article className="workspacePanel ffVisualCard">
-          <span className="eyebrow">VISUAL EVIDENCE</span>
-          <h2>What the camera sees now</h2>
-          <div className="ffVisualBody">
-            <div className="ffCameraPreview">
-              {latestImage?.url ? (
-                <img src={latestImage.url} alt="Current recent fruit evidence" />
-              ) : (
-                <div className="ffCameraEmpty">
-                  <Camera size={28} />
-                  <b>{storedImage?.url ? "Camera is not streaming" : "No current camera frame"}</b>
-                  <span>
-                    {storedImage?.url
-                      ? "A stored frame exists, but it is hidden here so stale evidence is never presented as live. Open History & Evidence to review it."
-                      : "Start a new inspection and capture a real view from the phone camera."}
-                  </span>
-                </div>
-              )}
+      </div>
+      <Panel
+        title="The product workflow"
+        eyebrow="HOW EVIDENCE BECOMES AN ACTION"
+      >
+        <div className="flowStages">
+          {[
+            ["01", "Intake", "Create one inspection per physical fruit."],
+            [
+              "02",
+              "Collect evidence",
+              "Capture 3 changed views and current chamber readings.",
+            ],
+            ["03", "Independent analysis", "Vision · Sensor · Reference · Multi-view"],
+            [
+              "04",
+              "Evidence critic",
+              "Check missing, inconsistent, stale or suspicious evidence.",
+            ],
+            [
+              "05",
+              "Decision",
+              "Release an experimental result only when evidence is eligible.",
+            ],
+            [
+              "06",
+              "Operator action",
+              "Translate the result into sale, storage, reinspection or rejection guidance.",
+            ],
+          ].map(([n, title, note], i) => (
+            <div className="flowStage" key={n}>
+              <span>{n}</span>
+              <h3>{title}</h3>
+              <p>{note}</p>
+              {i < 5 && <ArrowRight size={16} />}
             </div>
-            <div className="ffViewList">
-              {["front", "left", "right", "back", "top"].map((view) => {
-                const captured = capturedViews.includes(view);
-                return (
-                  <div key={view} className={captured ? "captured" : "needed"}>
-                    <b>{titleCase(view)}</b>
-                    <span>{captured ? (cameraRecent ? "captured" : "stored") : "needed"}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </article>
-
-        <article className="workspacePanel ffAnalystSummary">
-          <span className="eyebrow">INTELLIGENCE LAYERS</span>
-          <h2>Independent analysis before fusion</h2>
-          <div className="ffAnalystRows">
-            {analystRows.map(([name, note, value]) => (
-              <div key={name}>
-                <span><b>{name}</b><small>{note}</small></span>
-                <strong>{value}</strong>
+          ))}
+        </div>
+        <p className="footnote">
+          The proactive assistant explains backend evidence and recommendations;
+          it does not independently decide freshness. Internal texture is not
+          measured by the current prototype.
+        </p>
+      </Panel>
+      <div className="twoPanels">
+        <Panel title="Current prototype status">
+          <div className="connectionList">
+            {[
+              ["Backend", session.online],
+              ["Camera · selected inspection", evidence?.camera?.recent],
+              [
+                "ESP32 · recent physical data",
+                evidence?.sensors?.physical_present,
+              ],
+              ["Reference index", validation?.reference_index?.ready],
+            ].map(([label, ok]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <StatusChip tone={ok ? "good" : "neutral"}>
+                  {ok
+                    ? "Available"
+                    : session.online
+                      ? "Waiting / unavailable"
+                      : "Backend required"}
+                </StatusChip>
               </div>
             ))}
           </div>
-        </article>
-      </section>
-
-      <section className="ffOverviewBottomGrid">
-        <article className="workspacePanel ffCriticSummary">
-          <div>
-            <span className="eyebrow">EVIDENCE CRITIC</span>
-            <h2>{critic.blocking ? "Verdict blocked — more physical evidence required" : "Evidence gate ready for assessment"}</h2>
-            <p>{critic.missing_evidence?.length ? `Missing: ${critic.missing_evidence.join(" · ")}` : critic.warnings?.join(" · ") || "No recorded blocker for the selected inspection."}</p>
+        </Panel>
+        <Panel title="Supported now">
+          <div className="chipRow">
+            <StatusChip>Apple</StatusChip>
+            <StatusChip>Banana</StatusChip>
+            <StatusChip>Tomato · manual selection</StatusChip>
+            <StatusChip tone="warning">Experimental prototype</StatusChip>
           </div>
-          <StatusChip tone={critic.blocking ? "warning" : "good"}>
-            {critic.blocking ? "MORE EVIDENCE" : "GATE PASSED"}
-          </StatusChip>
-        </article>
-
-        <button className="ffCopilotTeaser" onClick={() => navigate("ai")}>
-          <div>
-            <Bot size={18} />
-            <b>FreshFusion AI Copilot</b>
-          </div>
-          <p>Ask why a verdict is locked, what evidence is missing, or what the sensors contributed.</p>
-          <div className="ffCopilotBadges">
-            <span>Gemma 3</span><span>Ollama local</span><span>Evidence-grounded</span>
-          </div>
-        </button>
-      </section>
-
-      <div className="ffScopeNote">
-        <ShieldCheck size={15} />
-        <span>Experimental prototype · MQ135 remains raw/relative · Gemma explains evidence but does not decide the verdict.</span>
-        <button className="textButton" onClick={() => navigate("system")}>System boundaries <ArrowRight size={13} /></button>
+          <p>
+            Automatic identity is currently optimized for Apple and Banana.
+            Tomato can be selected manually for inspection, but fruit-specific
+            reference ranges and validated quality thresholds still require real
+            data collection. Raw gas is not ppm, and physical-fruit checks are
+            probabilistic.
+          </p>
+          <button
+            className="secondary"
+            onClick={() => navigate("operator")}
+          >
+            See the operator decision <ArrowRight size={15} />
+          </button>
+        </Panel>
       </div>
     </div>
   );

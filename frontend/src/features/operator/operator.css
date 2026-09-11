@@ -1,0 +1,245 @@
+.operatorIntro h1 {
+  max-width: 760px;
+}
+
+.operatorHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+.decisionCard,
+.assistantRail {
+  background: #fff;
+  border: 1px solid #dfe7e1;
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.decisionCard.good {
+  border-top: 4px solid #3a7f58;
+}
+
+.decisionCard.warning {
+  border-top: 4px solid #d49a35;
+}
+
+.decisionCard.danger {
+  border-top: 4px solid #b95c4f;
+}
+
+.decisionTopline,
+.assistantHeading,
+.assistantMessageTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.decisionTopline {
+  justify-content: space-between;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #67796d;
+}
+
+.decisionMain {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  margin: 26px 0 22px;
+}
+
+.decisionLabel,
+.operatorActionGrid span,
+.microMetrics span,
+.assistantHeading span {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  color: #77877d;
+  font-weight: 700;
+}
+
+.decisionMain h2 {
+  margin: 5px 0 0;
+  font-size: clamp(32px, 4vw, 54px);
+  line-height: 1.05;
+  text-transform: capitalize;
+  letter-spacing: -1.3px;
+}
+
+.compactScore {
+  min-width: 94px;
+  text-align: center;
+  border: 1px solid #e2e8e3;
+  background: #f8faf8;
+  border-radius: 12px;
+  padding: 14px 10px;
+}
+
+.compactScore strong {
+  display: block;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.compactScore span {
+  font-size: 11px;
+  color: #748177;
+}
+
+.operatorActionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.operatorActionGrid > div {
+  border: 1px solid #e7ece8;
+  border-radius: 9px;
+  padding: 13px;
+  min-height: 76px;
+}
+
+.operatorActionGrid b {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.decisionReason {
+  background: #f5f8f6;
+  border-radius: 9px;
+  padding: 14px 16px;
+}
+
+.decisionReason p {
+  margin: 4px 0 0;
+  color: #52655a;
+}
+
+.microMetrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.microMetrics > div {
+  padding: 8px 9px;
+  border-radius: 7px;
+  background: #fafbfa;
+  border: 1px solid #edf0ed;
+  min-width: 0;
+}
+
+.microMetrics b {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.operatorButtons {
+  margin-top: 18px;
+}
+
+.assistantRail {
+  position: sticky;
+  top: 16px;
+}
+
+.assistantHeading {
+  border-bottom: 1px solid #edf0ed;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+}
+
+.assistantHeading > div {
+  min-width: 0;
+}
+
+.assistantMessages {
+  display: grid;
+  gap: 10px;
+}
+
+.assistantMessage {
+  border-radius: 9px;
+  padding: 12px 13px;
+  border: 1px solid #e4e9e5;
+  background: #f9fbf9;
+}
+
+.assistantMessage.warning {
+  background: #fff8ec;
+  border-color: #ead9b7;
+}
+
+.assistantMessage.critical {
+  background: #fff1ef;
+  border-color: #e9cbc5;
+}
+
+.assistantMessage p {
+  margin: 6px 0 0;
+  color: #5f7166;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.assistantBoundary {
+  font-size: 11px;
+  color: #7b887f;
+  margin: 14px 0 0;
+}
+
+.operatorBoundaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.operatorBoundaryGrid > div {
+  border: 1px solid #e8ece9;
+  border-radius: 9px;
+  padding: 14px;
+}
+
+.operatorBoundaryGrid p {
+  font-size: 12px;
+  margin-bottom: 0;
+}
+
+@media (max-width: 1050px) {
+  .operatorHero {
+    grid-template-columns: 1fr;
+  }
+
+  .assistantRail {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .operatorActionGrid,
+  .operatorBoundaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .microMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .decisionMain {
+    align-items: flex-start;
+  }
+}
