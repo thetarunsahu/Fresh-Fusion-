@@ -54,6 +54,17 @@ export const bundle = async (id) => {
 };
 export const investigation = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/investigation`);
+export const askInspectionAssistant = (id, question) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/assistant/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+export const explainInvestigation = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain`, {
+    method: "POST",
+  });
+export const ollamaHealth = () => json(`${API}/ai/ollama/health`);
 export const activeSample = () => json(`${API}/samples/active`);
 export const activateSample = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/active`, { method: "PUT" });
