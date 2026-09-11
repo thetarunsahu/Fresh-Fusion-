@@ -53,9 +53,10 @@ def record_assessment_changes(db: Session, current: FusionResult) -> list[Inspec
     created = []
     previous = previous_result(db, current.sample_id, exclude_id=current.id)
     current_validation = (current.components or {}).get("validation", {})
+    ready = current_validation.get("verdict_ready") is True
     if previous:
         previous_validation = (previous.components or {}).get("validation", {})
-        if current_validation.get("verdict_ready") and previous_validation.get("verdict_ready") and current.label != previous.label:
+        if ready and previous_validation.get("verdict_ready") and current.label != previous.label:
             severity = "critical" if str(current.label).startswith("spoiled") else "warning"
             row = record_event(
                 db,
@@ -67,7 +68,7 @@ def record_assessment_changes(db: Session, current: FusionResult) -> list[Inspec
                 dedupe_key=f"class:{previous.label}:{current.label}",
             )
             if row: created.append(row)
-        if current_validation.get("verdict_ready") and previous_validation.get("verdict_ready"):
+        if ready and previous_validation.get("verdict_ready"):
             drop = float(previous.freshness_score) - float(current.freshness_score)
             if drop >= 8:
                 row = record_event(
@@ -80,6 +81,28 @@ def record_assessment_changes(db: Session, current: FusionResult) -> list[Inspec
                     dedupe_key="score_drop",
                 )
                 if row: created.append(row)
+
+    if ready:
+        action_map = {
+            "ripe": ("priority_sale_zone", "Fruit entered the priority-sale zone.", "warning"),
+            "overripe": ("quick_sale_zone", "Fruit entered the quick-sale / processing zone.", "warning"),
+            "spoiled": ("reject_zone", "Fruit entered the remove / reject zone.", "critical"),
+            "spoiled-suspected": ("reject_zone", "Fruit entered the remove-from-normal-stock zone and needs verification.", "critical"),
+        }
+        if current.label in action_map:
+            event_type, message, severity = action_map[current.label]
+            row = record_event(
+                db,
+                current.sample_id,
+                event_type,
+                message,
+                severity=severity,
+                payload={"label": current.label, "score": current.freshness_score},
+                dedupe_key=f"action_zone:{current.label}",
+                cooldown_seconds=300,
+            )
+            if row: created.append(row)
+
     sensor = (current.components or {}).get("sensor_evidence", {})
     trend = sensor.get("trend") if isinstance(sensor, dict) else None
     if isinstance(trend, dict) and trend.get("direction") == "rising":
