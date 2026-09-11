@@ -3,6 +3,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import WorkspaceLayout from "./layout/WorkspaceLayout";
 import useInspection from "./hooks/useInspection";
 import Overview from "./features/overview/Overview";
+import OperatorDashboard from "./features/operator/OperatorDashboard";
 import LiveInspection from "./features/inspection/LiveInspection";
 import Investigation from "./features/investigation/Investigation";
 import EvidenceTimeline from "./features/evidence/EvidenceTimeline";
@@ -14,6 +15,7 @@ import "./workspace.css";
 
 const routes = new Set([
   "overview",
+  "operator",
   "inspection",
   "investigation",
   "evidence",
@@ -86,6 +88,7 @@ export default function App() {
           <option value="Auto">Auto identity</option>
           <option>Apple</option>
           <option>Banana</option>
+          <option>Tomato</option>
         </select>
         <button
           className="primary"
@@ -143,6 +146,9 @@ export default function App() {
           navigate={navigate}
           validation={validation}
         />
+      )}
+      {page === "operator" && (
+        <OperatorDashboard session={session} navigate={navigate} />
       )}
       {page === "inspection" && (
         <LiveInspection
