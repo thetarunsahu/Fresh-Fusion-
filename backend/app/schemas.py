@@ -61,6 +61,17 @@ class InspectionProfileIn(BaseModel):
     chamber_purged: bool | None = None
 
 
+class AssistantQuestionIn(BaseModel):
+    question: str = Field(min_length=2, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_question(self):
+        self.question = " ".join(self.question.strip().split())
+        if len(self.question) < 2:
+            raise ValueError("Question is too short")
+        return self
+
+
 class SensorIn(BaseModel):
     model_config = ConfigDict(extra="allow", allow_inf_nan=False)
     sample_id: str | None = None
