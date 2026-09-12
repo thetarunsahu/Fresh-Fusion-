@@ -1,5 +1,6 @@
 import os
 import secrets
+from collections import Counter
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -22,6 +23,7 @@ ALLOWED = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
 AUTO_IDENTITY_CONFIDENCE = float(os.getenv('AUTO_IDENTITY_CONFIDENCE', '72'))
 AUTO_SCREEN_BLOCK = float(os.getenv('AUTO_SCREEN_BLOCK', '65'))
+IDENTITY_BOOTSTRAP_FRAMES = max(3, int(os.getenv('IDENTITY_BOOTSTRAP_FRAMES', '3')))
 
 
 def _relative_artifacts(analysis: dict) -> dict:
@@ -57,87 +59,104 @@ def _identity(analysis: dict) -> tuple[str, float]:
 
 
 def _required_identity_confidence(candidate: str) -> float:
-    # Tomato auto-routing is intentionally stricter because simple RGB/shape
-    # features can overlap with red apples.
-    return max(AUTO_IDENTITY_CONFIDENCE, 86.0) if candidate == 'Tomato' else AUTO_IDENTITY_CONFIDENCE
+    # Tomato remains slightly stricter because red apples can overlap in RGB
+    # appearance. Stability comes mainly from temporal consensus below.
+    return max(AUTO_IDENTITY_CONFIDENCE, 82.0) if candidate == 'Tomato' else AUTO_IDENTITY_CONFIDENCE
+
+
+def _recent_identity_votes(db: Session, sample_id: str, limit: int = 6) -> list[dict]:
+    rows = (db.query(FruitImage)
+        .filter(FruitImage.sample_id == sample_id, FruitImage.angle.like('live-%'))
+        .order_by(FruitImage.uploaded_at.desc(), FruitImage.id.desc())
+        .limit(limit).all())
+    votes = []
+    for row in rows:
+        row_analysis = row.analysis or {}
+        fruit, confidence = _identity(row_analysis)
+        screen = float(row_analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
+        threshold = max(64.0, _required_identity_confidence(fruit) - 8.0)
+        if (
+            row_analysis.get('quality', {}).get('fruit_present') is True
+            and fruit in {'Apple', 'Banana', 'Tomato'}
+            and confidence >= threshold
+            and screen < AUTO_SCREEN_BLOCK
+        ):
+            votes.append({'fruit': fruit, 'confidence': confidence})
+    return votes
+
+
+def _identity_consensus(candidate: str, confidence: float, history: list[dict]) -> dict:
+    window = [{'fruit': candidate, 'confidence': confidence}, *history][:5]
+    counts = Counter(item['fruit'] for item in window)
+    candidate_count = counts.get(candidate, 0)
+    other_count = sum(value for key, value in counts.items() if key != candidate)
+    matching = [item['confidence'] for item in window if item['fruit'] == candidate]
+    average = sum(matching) / max(len(matching), 1)
+    return {
+        'stable': candidate_count >= IDENTITY_BOOTSTRAP_FRAMES and candidate_count > other_count,
+        'candidate_frames': candidate_count,
+        'required_frames': IDENTITY_BOOTSTRAP_FRAMES,
+        'average_confidence': round(average, 1),
+        'recent_votes': [item['fruit'] for item in window],
+    }
 
 
 def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> tuple[FruitSample, dict]:
     candidate, confidence = _identity(analysis)
     screen_suspicion = float(analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
+    current = (sample.fruit_type or 'Auto').strip().title()
     event = {
         'detected_fruit': candidate,
         'identity_confidence': confidence,
         'screen_suspicion_pct': screen_suspicion,
         'sample_changed': False,
         'previous_sample_id': sample.sample_id,
+        'locked_identity': current if current in {'Apple', 'Banana', 'Tomato'} else None,
     }
+
     if analysis.get('quality', {}).get('fruit_present') is not True:
+        event['routing_blocked'] = 'no_usable_fruit_region'
         return sample, event
     if screen_suspicion >= AUTO_SCREEN_BLOCK:
         event['routing_blocked'] = 'suspected_screen_or_photo'
         return sample, event
+
     threshold = _required_identity_confidence(candidate)
     if candidate not in {'Apple', 'Banana', 'Tomato'} or confidence < threshold:
-        if candidate == 'Tomato':
-            event['routing_blocked'] = 'tomato_identity_needs_stronger_evidence'
-            event['required_confidence'] = threshold
+        event['routing_blocked'] = 'identity_confidence_too_low'
+        event['required_confidence'] = threshold
         return sample, event
 
-    current = (sample.fruit_type or 'Auto').strip().title()
-    if current in {'Auto', 'Fruit', 'Unknown'}:
-        sample.fruit_type = candidate
-        db.add(sample)
-        db.commit()
-        db.refresh(sample)
-        event['auto_selected'] = True
-        return sample, event
-    if current == candidate:
-        return sample, event
-
-    recent = (db.query(FruitImage)
-        .filter(FruitImage.sample_id == sample.sample_id, FruitImage.angle.like('live-%'))
-        .order_by(FruitImage.uploaded_at.desc())
-        .limit(2).all())
-    stable = []
-    stable_threshold = max(64.0, threshold - 8.0)
-    for row in recent:
-        row_analysis = row.analysis or {}
-        row_candidate, row_confidence = _identity(row_analysis)
-        row_screen = float(row_analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
-        if (
-            row_analysis.get('quality', {}).get('fruit_present') is True
-            and row_candidate == candidate
-            and row_confidence >= stable_threshold
-            and row_screen < AUTO_SCREEN_BLOCK
-        ):
-            stable.append(row)
-
-    if len(stable) < 2:
-        event['pending_switch'] = True
-        event['candidate_frames'] = len(stable) + 1
+    # Once an inspection has a fruit identity, keep it stable. A noisy frame must
+    # never turn Banana -> Apple -> Banana inside the same inspection. If the user
+    # physically changes fruit, start a new inspection instead of silently moving
+    # evidence between samples.
+    if current in {'Apple', 'Banana', 'Tomato'}:
+        if current == candidate:
+            event['stable_identity'] = current
+        else:
+            event['identity_conflict'] = True
+            event['routing_blocked'] = 'inspection_identity_locked'
+            event['message'] = f'Inspection is locked to {current}; current frame looks like {candidate}. Start a new inspection if the physical fruit changed.'
         return sample, event
 
-    prefix = candidate[:3].upper()
-    new_sample = FruitSample(
-        sample_id=f'{prefix}-{secrets.token_hex(3).upper()}',
-        fruit_type=candidate,
-        source='auto-camera-switch',
-        status='collecting',
-    )
-    db.add(new_sample)
-    db.flush()
-    for row in stable:
-        row.sample_id = new_sample.sample_id
-        db.add(row)
+    history = _recent_identity_votes(db, sample.sample_id, 6)
+    consensus = _identity_consensus(candidate, confidence, history)
+    event['identity_consensus'] = consensus
+
+    # Auto mode is intentionally not decided from one frame. Three agreeing frames
+    # are required before we write the fruit family into the sample.
+    if not consensus['stable']:
+        event['pending_identity'] = True
+        return sample, event
+
+    sample.fruit_type = candidate
+    db.add(sample)
     db.commit()
-    db.refresh(new_sample)
-    event.update({
-        'sample_changed': True,
-        'new_sample_id': new_sample.sample_id,
-        'moved_previous_candidate_frames': len(stable),
-    })
-    return new_sample, event
+    db.refresh(sample)
+    event['auto_selected'] = True
+    event['stable_identity'] = candidate
+    return sample, event
 
 
 async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str | None, max_bytes: int, db: Session):
@@ -173,10 +192,6 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
 
     sample, auto_event = _route_detected_fruit(db, sample, analysis)
     sample_id = sample.sample_id
-    if auto_event.get('sample_changed'):
-        current_target = active_sample(db)
-        if current_target and current_target.sample_id == auto_event['previous_sample_id']:
-            set_active(db, sample)
 
     record = FruitImage(
         sample_id=sample_id,
@@ -220,8 +235,6 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
         },
     }
     await manager.broadcast(sample_id, {'type': 'vision-frame', 'data': payload})
-    if auto_event.get('sample_changed'):
-        await manager.broadcast(auto_event['previous_sample_id'], {'type': 'vision-frame', 'data': payload})
     return payload
 
 
