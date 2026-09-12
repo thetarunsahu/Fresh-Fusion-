@@ -1,9 +1,9 @@
 """Conservative extensions for fruit identity support.
 
-The existing image analyser was originally tuned for Apple/Banana. This module
-adds a Tomato compatibility check using already-computed shape and colour
-features. It intentionally avoids pretending that a round red fruit can always
-be distinguished from an apple with simple heuristics.
+The base image analyser was originally tuned for Apple/Banana. This module adds
+Tomato compatibility using already-computed shape and colour features. It does
+not claim that a single RGB frame can always distinguish a tomato from a red
+apple, so auto mode requires a stronger cue set than manual Tomato mode.
 """
 
 from __future__ import annotations
@@ -37,46 +37,69 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
     aspect = _f(shape.get("aspect_ratio"), 99.0)
     solidity = _f(shape.get("solidity"))
 
-    round_score = max(0.0, min(1.0, (circularity - 0.42) / 0.38))
-    aspect_score = max(0.0, min(1.0, (1.75 - aspect) / 0.55))
-    solidity_score = max(0.0, min(1.0, (solidity - 0.65) / 0.30))
-    skin_score = max(0.0, min(1.0, (red + 0.35 * green + 0.15 * yellow) / 55.0))
-    decay_penalty = min(0.22, brown / 100.0 * 0.4)
-    tomato_score = max(0.0, round_score * 0.30 + aspect_score * 0.20 + solidity_score * 0.18 + skin_score * 0.32 - decay_penalty)
-    tomato_confidence = round(min(91.0, tomato_score * 100.0), 1)
+    round_score = max(0.0, min(1.0, (circularity - 0.40) / 0.38))
+    aspect_score = max(0.0, min(1.0, (1.65 - aspect) / 0.50))
+    solidity_score = max(0.0, min(1.0, (solidity - 0.64) / 0.30))
+    red_score = max(0.0, min(1.0, red / 48.0))
+    green_support = max(0.0, min(1.0, green / 32.0))
+    colour_score = min(1.0, red_score * 0.82 + green_support * 0.18)
+    decay_penalty = min(0.20, brown / 100.0 * 0.35)
+
+    tomato_score = max(
+        0.0,
+        round_score * 0.31
+        + aspect_score * 0.22
+        + solidity_score * 0.18
+        + colour_score * 0.29
+        - decay_penalty,
+    )
+    tomato_confidence = round(min(93.0, tomato_score * 100.0), 1)
 
     requested = str(requested_fruit or "Auto").strip().lower()
     current = str(identity.get("fruit") or "Unknown")
     current_confidence = _f(identity.get("confidence"))
 
+    strong_round_tomato = (
+        tomato_confidence >= 82.0
+        and round_score >= 0.72
+        and aspect_score >= 0.72
+        and solidity_score >= 0.62
+        and red >= 18.0
+        and yellow < 35.0
+    )
+
     identity["tomato_candidate"] = {
         "confidence": tomato_confidence,
+        "strong_candidate": strong_round_tomato,
         "roundness": round(round_score, 3),
         "aspect_support": round(aspect_score, 3),
         "solidity_support": round(solidity_score, 3),
-        "colour_support": round(skin_score, 3),
-        "note": "Tomato compatibility heuristic; a phone RGB image alone cannot always distinguish a round red tomato from an apple.",
+        "colour_support": round(colour_score, 3),
+        "note": "Tomato compatibility heuristic; temporal consensus is required in auto mode because red apples can overlap in RGB appearance.",
     }
 
-    # When the operator explicitly selected Tomato, prefer a compatible Tomato
-    # identity instead of allowing the older Apple/Banana fallback to contradict
-    # the selected inspection. This remains evidence, not ground truth.
-    if requested == "tomato" and tomato_confidence >= 56.0:
+    # Explicit operator selection is a strong prior, but still requires the frame
+    # to look compatible with a real tomato rather than blindly relabelling it.
+    if requested == "tomato" and tomato_confidence >= 52.0:
         identity.update({
             "fruit": "Tomato",
-            "confidence": max(60.0, tomato_confidence),
+            "confidence": max(64.0, tomato_confidence),
             "method": "operator-selected Tomato + shape/colour compatibility",
             "note": "Tomato identity is supported by operator selection plus visual compatibility; it is not a trained Tomato classifier.",
         })
-    # Auto mode is deliberately conservative because red apples and tomatoes can
-    # overlap in these handcrafted RGB features.
-    elif requested in {"auto", "fruit", "unknown", ""} and tomato_confidence >= 86.0 and current_confidence < 68.0:
-        identity.update({
-            "fruit": "Tomato",
-            "confidence": tomato_confidence,
-            "method": "conservative Tomato shape/colour candidate",
-            "note": "Auto Tomato identity is provisional until a trained multi-fruit identity model is validated.",
-        })
+    # Auto mode: permit a genuinely strong tomato cue set to override an Apple
+    # fallback. The stream router still requires repeated-frame consensus before
+    # changing the active fruit identity.
+    elif requested in {"auto", "fruit", "unknown", ""} and strong_round_tomato:
+        if current == "Unknown" or current_confidence < 76.0 or (
+            current == "Apple" and tomato_confidence >= current_confidence - 2.0
+        ):
+            identity.update({
+                "fruit": "Tomato",
+                "confidence": tomato_confidence,
+                "method": "strong Tomato shape/colour candidate + temporal-consensus required",
+                "note": "Auto Tomato identity is provisional until repeated frames agree; it is not a validated trained classifier.",
+            })
 
     analysis["identity"] = identity
     analysis["fruit_type"] = identity.get("fruit") if identity.get("fruit") != "Unknown" else analysis.get("fruit_type")
