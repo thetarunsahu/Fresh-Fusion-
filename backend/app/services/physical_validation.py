@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from statistics import median
 
@@ -13,6 +12,7 @@ from ..models import FruitImage, FruitSample, SensorReading
 from .sensor_assessment import eligible_sensors, age_seconds
 
 VIEWS = {"front", "back", "left", "right", "top"}
+SUPPORTED_IDENTITIES = {"apple", "banana", "tomato"}
 
 
 def _view_name(angle: str) -> str:
@@ -116,6 +116,15 @@ def _planar_pair_score(a: FruitImage, b: FruitImage) -> float | None:
     return round(max(0.0, min(100.0, inlier_ratio * (0.72 + 0.28 * support) * 100.0)), 1)
 
 
+def _effective_identity(analysis: dict) -> tuple[str, float]:
+    state = analysis.get("identity_state", {})
+    stable = str(state.get("stable_fruit") or "").lower()
+    if stable:
+        return stable, float(state.get("stable_confidence") or 100.0)
+    identity = analysis.get("identity", {})
+    return str(identity.get("fruit") or "Unknown").lower(), float(identity.get("confidence") or 0.0)
+
+
 def evaluate_physical_evidence(
     db: Session,
     sample: FruitSample,
@@ -126,7 +135,8 @@ def evaluate_physical_evidence(
 
     This is a gate, not a guaranteed anti-spoof claim. FreshFusion combines
     display-artifact suspicion, multi-view appearance diversity, planar
-    homography consistency, identity consistency and recent ESP32 telemetry.
+    homography consistency, stabilized identity consistency and recent ESP32
+    telemetry.
     """
 
     if images is None:
@@ -146,10 +156,9 @@ def evaluate_physical_evidence(
             .all()
         )
 
-    # Capture windows are operational freshness limits, not biological calibration.
     images = [row for row in images if -5 <= age_seconds(row.uploaded_at) <= 180]
     if images and (images[0].analysis or {}).get("quality", {}).get("fruit_present") is not True:
-        images = []  # A current empty scene cannot reuse older positive evidence.
+        images = []
     sensor_present = _recent_sensor_present(sensors)
     expected = (sample.fruit_type or "").strip().lower()
     usable: list[FruitImage] = []
@@ -157,10 +166,8 @@ def evaluate_physical_evidence(
         analysis = row.analysis or {}
         if analysis.get("quality", {}).get("fruit_present") is not True:
             continue
-        identity = analysis.get("identity", {})
-        detected = str(identity.get("fruit") or "Unknown").lower()
-        confidence = float(identity.get("confidence") or 0.0)
-        if expected in {"apple", "banana"} and detected not in {"unknown", "", expected} and confidence >= 58.0:
+        detected, confidence = _effective_identity(analysis)
+        if expected in SUPPORTED_IDENTITIES and detected not in {"unknown", "", expected} and confidence >= 58.0:
             continue
         usable.append(row)
 
@@ -201,9 +208,8 @@ def evaluate_physical_evidence(
 
     identities = []
     for row in selected:
-        identity = (row.analysis or {}).get("identity", {})
-        fruit = str(identity.get("fruit") or "Unknown")
-        if fruit != "Unknown" and float(identity.get("confidence") or 0.0) >= 58.0:
+        fruit, confidence = _effective_identity(row.analysis or {})
+        if fruit not in {"unknown", ""} and confidence >= 58.0:
             identities.append(fruit)
     identity_consistency = 0.0
     if identities:
