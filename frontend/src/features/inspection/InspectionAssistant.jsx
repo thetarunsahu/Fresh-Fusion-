@@ -4,6 +4,12 @@ import { askInspectionAssistant } from "../../api";
 import "./inspection-assistant.css";
 
 const nice = (value) => String(value || "info").replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const quickQuestions = [
+  "Why is the current score this value?",
+  "What should I do with this fruit now?",
+  "Explain the MQ135 reading and baseline.",
+  "Which evidence is still missing?",
+];
 
 export default function InspectionAssistant({ session, proactive }) {
   const [question, setQuestion] = useState("");
@@ -23,15 +29,14 @@ export default function InspectionAssistant({ session, proactive }) {
     setError("");
   }, [sampleId]);
 
-  const ask = async (event) => {
-    event?.preventDefault();
-    const clean = question.trim();
+  const submitQuestion = async (text) => {
+    const clean = String(text || "").trim();
     if (!sampleId || clean.length < 2 || asking) return;
     setAsking(true);
     setError("");
     try {
       const result = await askInspectionAssistant(sampleId, clean);
-      setAnswer({ ...result.response, mode: result.mode });
+      setAnswer({ ...result.response, mode: result.mode, question: clean });
       setQuestion("");
       await session.refresh();
     } catch (err) {
@@ -39,6 +44,11 @@ export default function InspectionAssistant({ session, proactive }) {
     } finally {
       setAsking(false);
     }
+  };
+
+  const ask = async (event) => {
+    event?.preventDefault();
+    await submitQuestion(question);
   };
 
   const severity = proactive?.severity || latestImportant?.severity || "info";
@@ -66,6 +76,21 @@ export default function InspectionAssistant({ session, proactive }) {
         <div className="ffNextAction"><b>What should you do?</b><p>{proactive?.action || "Continue the guided inspection workflow."}</p></div>
       </div>
 
+      <div style={{display:"flex", flexWrap:"wrap", gap:8, margin:"12px 0"}}>
+        {quickQuestions.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className="secondary"
+            style={{fontSize:11, padding:"7px 9px"}}
+            disabled={!sampleId || asking}
+            onClick={() => submitQuestion(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+
       {answer && (
         <div className="iaAnswer">
           <div className="iaAnswerHead">
@@ -73,6 +98,7 @@ export default function InspectionAssistant({ session, proactive }) {
             <b>Answer</b>
             <span>{answer.mode === "gemma" ? "Gemma · evidence grounded" : "Local evidence fallback"}</span>
           </div>
+          {answer.question && <small style={{display:"block", marginBottom:6, opacity:.7}}>Q: {answer.question}</small>}
           <p>{answer.answer}</p>
           {answer.evidence_used?.length > 0 && (
             <div className="iaEvidenceUsed">
@@ -90,7 +116,7 @@ export default function InspectionAssistant({ session, proactive }) {
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask: Why this result? What should I do?"
+          placeholder="Ask about score, gas, damage, views or next action..."
           maxLength={500}
           disabled={!sampleId || asking}
         />
