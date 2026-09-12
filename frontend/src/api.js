@@ -1,11 +1,24 @@
 export const API_ROOT = import.meta.env.VITE_API_ROOT || window.location.origin;
 export const API = `${API_ROOT}/api/v1`;
+const AUTH_TOKEN_KEY = "freshfusion_access_token";
+
+export const getAuthToken = () => localStorage.getItem(AUTH_TOKEN_KEY);
+export const setAuthToken = (token) => {
+  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+};
+export const clearAuthToken = () => localStorage.removeItem(AUTH_TOKEN_KEY);
 
 async function json(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
+  const token = getAuthToken();
+  const headers = {
+    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, headers, signal: controller.signal });
     if (!res.ok) {
       const body = await res.text();
       let detail;
@@ -25,6 +38,20 @@ async function json(url, options = {}) {
     clearTimeout(timer);
   }
 }
+
+export const register = (payload) =>
+  json(`${API}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+export const login = (email, password) =>
+  json(`${API}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+export const authMe = () => json(`${API}/auth/me`);
 
 export const health = () => json(`${API}/health`);
 export const createSample = (fruit_type = "Auto") =>
