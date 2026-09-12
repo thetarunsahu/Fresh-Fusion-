@@ -11,8 +11,8 @@ from .realtime import manager
 Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="FreshFusion API",
-    version="2.4.0",
-    description="Multimodal fruit intelligence backend with user authentication, automatic Apple/Banana identity, ESP32 telemetry, continuous phone vision, public dataset references, computer vision and fusion scoring.",
+    version="2.4.1",
+    description="Multimodal fruit intelligence backend with user authentication, stabilized Apple/Banana/Tomato identity, ESP32 telemetry, continuous phone vision, public dataset references, computer vision and fusion scoring.",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -60,7 +60,7 @@ def health():
     return {
         "status": "online",
         "service": "FreshFusion",
-        "version": "2.4.0",
+        "version": "2.4.1",
         "lan_ip": lan_ip,
         "phone_dashboard": phone_dashboard,
         "phone_mode": phone_mode,
@@ -74,9 +74,10 @@ def health():
         },
         "esp32_endpoint": f"http://{lan_ip}:{backend_port}/api/v1/sensors/readings",
         "fruit_identity": {
-            "mode": "auto",
-            "supported_now": ["Apple", "Banana"],
+            "mode": "temporal-consensus",
+            "supported_now": ["Apple", "Banana", "Tomato"],
             "broader_identity_dataset": "Fruits-360",
+            "note": "Operator-facing identity is stabilized across repeated frames; Tomato remains heuristic until validated training data is available.",
         },
     }
 
