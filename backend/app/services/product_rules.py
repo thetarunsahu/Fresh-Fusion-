@@ -63,23 +63,53 @@ def recommendation(fruit: str | None, label: str | None, *, verdict_ready: bool,
 def score_breakdown(fusion: dict) -> dict:
     sensor_score = fusion.get("sensor_score")
     vision_score = fusion.get("vision_score")
-    validation = (fusion.get("components") or {}).get("validation", {})
+    components = fusion.get("components") or {}
+    validation = components.get("validation", {})
+    vision_components = components.get("vision", {})
     ready = validation.get("verdict_ready") is True
     sensor_weight = 0.48
     vision_weight = 0.52
+
+    provisional_vision = vision_score
+    if provisional_vision is None:
+        provisional_vision = vision_components.get("provisional_vision_score")
+
+    provisional_score = None
+    provisional_basis = []
+    if provisional_vision is not None and sensor_score is not None:
+        provisional_score = round(float(sensor_score) * sensor_weight + float(provisional_vision) * vision_weight, 2)
+        provisional_basis = ["sensor", "vision"]
+    elif provisional_vision is not None:
+        provisional_score = round(float(provisional_vision), 2)
+        provisional_basis = ["vision"]
+    elif sensor_score is not None:
+        provisional_score = round(float(sensor_score), 2)
+        provisional_basis = ["sensor"]
+
     sensor_contribution = round(float(sensor_score) * sensor_weight, 2) if ready and sensor_score is not None else None
     vision_contribution = round(float(vision_score) * vision_weight, 2) if ready and vision_score is not None else None
     return {
         "released": ready,
         "final_score": fusion.get("freshness_score") if ready else None,
+        "provisional_score": provisional_score,
+        "provisional_basis": provisional_basis,
         "formula": "sensor_score × 0.48 + vision_score × 0.52",
         "sensor": {"score": sensor_score, "weight": sensor_weight, "contribution": sensor_contribution},
-        "vision": {"score": vision_score, "weight": vision_weight, "contribution": vision_contribution},
+        "vision": {
+            "score": vision_score,
+            "provisional_score": provisional_vision,
+            "weight": vision_weight,
+            "contribution": vision_contribution,
+        },
         "physical_verification": {
             "status": validation.get("status"),
             "views_count": validation.get("views_count"),
             "required_views": validation.get("required_views", 3),
             "confidence": validation.get("confidence"),
         },
-        "note": "This explains the current deterministic prototype score. The weights are not validated scientific constants.",
+        "note": (
+            "Provisional score is shown for operator visibility while evidence is still being collected. "
+            "It is not the released freshness verdict. Final score remains locked until evidence gates pass. "
+            "Prototype weights are not validated scientific constants."
+        ),
     }
