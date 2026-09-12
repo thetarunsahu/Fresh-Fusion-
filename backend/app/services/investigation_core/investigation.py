@@ -81,8 +81,26 @@ def investigate(db, sample):
     analysts = summarize_analysts(evidence, fusion)
     vision = analysts.get("vision", {})
     detected_fruit = (vision.get("identity") or {}).get("fruit")
-    manual_fruit = sample.fruit_type if str(sample.fruit_type or "").lower() not in {"auto", "fruit", "unknown"} else None
-    fruit = detected_fruit if str(detected_fruit or "").lower() in SUPPORTED_FRUITS else (manual_fruit or detected_fruit or sample.fruit_type)
+    sample_fruit = str(sample.fruit_type or "").strip()
+    locked_fruit = sample_fruit if sample_fruit.lower() in SUPPORTED_FRUITS else None
+
+    # Product UI must not flicker with every noisy camera frame. Once the sample
+    # has an accepted Apple/Banana/Tomato identity, that sample identity is the
+    # operator-facing fruit name. Per-frame CV identity is still retained below
+    # as diagnostic evidence and may trigger a conflict warning/correction in the
+    # image router, but it no longer replaces the title on every refresh.
+    if locked_fruit:
+        fruit = locked_fruit.title()
+    elif str(detected_fruit or "").lower() in SUPPORTED_FRUITS:
+        fruit = detected_fruit
+    else:
+        fruit = detected_fruit or sample.fruit_type
+
+    identity_conflict = bool(
+        locked_fruit
+        and str(detected_fruit or "").lower() in SUPPORTED_FRUITS
+        and str(detected_fruit).lower() != locked_fruit.lower()
+    )
     unsupported = str(fruit or "").lower() not in SUPPORTED_FRUITS
 
     gate_issues = list(image_quality["issues"])
@@ -106,6 +124,7 @@ def investigate(db, sample):
 
     visible_damage = (vision.get("defects") or {}).get("visible_damage_estimate_pct")
     product = recommendation(fruit, decision.get("label"), verdict_ready=decision.get("verdict_ready") is True, visible_damage_pct=visible_damage)
+    score_info = score_breakdown(fusion)
     return {
         "inspection_id": sample.sample_id,
         "sample": sample_info(sample),
@@ -116,8 +135,11 @@ def investigate(db, sample):
         "decision": decision,
         "product": {
             "fruit": fruit,
+            "detected_fruit": detected_fruit,
+            "identity_conflict": identity_conflict,
             "recommendation": product,
-            "score_breakdown": score_breakdown(fusion),
+            "score_breakdown": score_info,
+            "provisional_quality_score": score_info.get("provisional_score"),
             "condition_comparison": _condition_comparison(db, sample.sample_id, fusion),
             "profile": profile,
             "protocol": protocol_state,
