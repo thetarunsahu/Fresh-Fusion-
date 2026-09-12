@@ -7,6 +7,7 @@ from .sensor_assessment import assess_sensors, age_seconds
 from .inspection_events import record_assessment_changes
 
 RESULT_KEEP = max(40, int(os.getenv("FUSION_KEEP", "200")))
+SUPPORTED_IDENTITIES = {"apple", "banana", "tomato"}
 
 
 def _clamp(v: float) -> float:
@@ -26,12 +27,23 @@ def _usable_images(images: list[FruitImage], sample: FruitSample) -> list[FruitI
         valid = [row for row in images if row.analysis]
 
     expected = (sample.fruit_type or "").strip().lower()
-    if expected in {"apple", "banana"}:
+    if expected in SUPPORTED_IDENTITIES:
         matched = []
         for row in valid:
-            identity = (row.analysis or {}).get("identity", {})
+            analysis = row.analysis or {}
+            identity_state = analysis.get("identity_state", {})
+            stable = str(identity_state.get("stable_fruit") or "").lower()
+            identity = analysis.get("identity", {})
             detected = str(identity.get("fruit") or "").lower()
             confidence = float(identity.get("confidence") or 0.0)
+
+            # Prefer the inspection-stabilized identity when available. Raw-frame
+            # disagreement is retained for diagnostics but must not make the score
+            # oscillate once the inspection identity is established.
+            if stable:
+                if stable == expected:
+                    matched.append(row)
+                continue
             if not detected or detected == "unknown" or confidence < 58.0 or detected == expected:
                 matched.append(row)
         if matched:
@@ -77,9 +89,12 @@ def evaluate_fusion(db: Session, sample: FruitSample) -> dict:
             healthy_values.append(float(defects.get("healthy_surface_estimate_pct", 70.0)))
             brown_values.append(float(color.get("brown_pct", 0.0)))
             dark_values.append(float(color.get("dark_pct", 0.0)))
+            state = analysis.get("identity_state", {})
+            stable_identity = state.get("stable_fruit")
             identity = analysis.get("identity", {})
-            if identity.get("fruit") and identity.get("fruit") != "Unknown":
-                identities.append(identity.get("fruit"))
+            observed_identity = stable_identity or identity.get("fruit")
+            if observed_identity and observed_identity != "Unknown":
+                identities.append(observed_identity)
             reference = analysis.get("reference_match", {})
             if reference.get("status") == "ready":
                 reference_matches.append(reference)
