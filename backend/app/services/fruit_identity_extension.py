@@ -84,8 +84,6 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
         "note": "Banana cue combines elongated silhouette with yellow/green/brown skin support; temporal consensus is still required.",
     }
 
-    # If a frame has a strong elongated-banana cue, do not let an ambiguous
-    # Apple fallback win merely because the banana is browned or dimly lit.
     if strong_banana and requested != "tomato":
         should_override = (
             current in {"Unknown", "Apple"}
@@ -136,7 +134,7 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
         "aspect_support": round(aspect_score, 3),
         "solidity_support": round(solidity_score, 3),
         "colour_support": round(colour_score, 3),
-        "note": "Tomato compatibility heuristic; temporal consensus is required in auto mode because red apples can overlap in RGB appearance.",
+        "note": "Tomato compatibility heuristic; temporal consensus is required because red apples can overlap in RGB appearance.",
     }
 
     if requested == "tomato" and tomato_confidence >= 52.0:
@@ -146,7 +144,10 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
             "method": "operator-selected Tomato + shape/colour compatibility",
             "note": "Tomato identity is supported by operator selection plus visual compatibility; it is not a trained Tomato classifier.",
         })
-    elif requested in {"auto", "fruit", "unknown", ""} and strong_round_tomato:
+    elif strong_round_tomato and requested != "banana":
+        # A strong round/red Tomato cue may challenge the older Apple fallback.
+        # The router decides whether an auto-created inspection can actually be
+        # corrected; explicitly selected Apple inspections remain locked.
         current = str(identity.get("fruit") or "Unknown")
         current_confidence = _f(identity.get("confidence"))
         if current == "Unknown" or current_confidence < 76.0 or (
