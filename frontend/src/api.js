@@ -81,6 +81,12 @@ export const bundle = async (id) => {
 };
 export const investigation = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/investigation`);
+export const saveInvestigationSnapshot = (id, trigger = "manual-ui") =>
+  json(`${API}/samples/${encodeURIComponent(id)}/investigation/snapshot`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trigger }),
+  });
 export const askInspectionAssistant = (id, question) =>
   json(`${API}/samples/${encodeURIComponent(id)}/assistant/ask`, {
     method: "POST",
