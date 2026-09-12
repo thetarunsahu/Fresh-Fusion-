@@ -1,27 +1,11 @@
 export const API_ROOT = import.meta.env.VITE_API_ROOT || window.location.origin;
 export const API = `${API_ROOT}/api/v1`;
-export const AUTH_TOKEN_KEY = "freshfusion.auth.token";
-
-export const getAuthToken = () => localStorage.getItem(AUTH_TOKEN_KEY);
-export const setAuthToken = (token) => {
-  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
-  else localStorage.removeItem(AUTH_TOKEN_KEY);
-};
-export const clearAuthToken = () => localStorage.removeItem(AUTH_TOKEN_KEY);
 
 async function json(url, options = {}) {
-  const { timeoutMs = 30000, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const token = getAuthToken();
-  const headers = new Headers(fetchOptions.headers || {});
-  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+  const timer = setTimeout(() => controller.abort(), 30000);
   try {
-    const res = await fetch(url, {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    });
+    const res = await fetch(url, { ...options, signal: controller.signal });
     if (!res.ok) {
       const body = await res.text();
       let detail;
@@ -29,9 +13,6 @@ async function json(url, options = {}) {
         detail = JSON.parse(body).detail;
       } catch {
         /* HTTP text response */
-      }
-      if (res.status === 401 && !url.endsWith("/auth/login") && !url.endsWith("/auth/register")) {
-        clearAuthToken();
       }
       throw new Error(
         typeof detail === "string"
@@ -45,22 +26,7 @@ async function json(url, options = {}) {
   }
 }
 
-export const login = (email, password) =>
-  json(`${API}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-export const register = (payload) =>
-  json(`${API}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-export const authMe = () => json(`${API}/auth/me`);
-
 export const health = () => json(`${API}/health`);
-export const ollamaHealth = () => json(`${API}/ai/ollama/health`);
 export const createSample = (fruit_type = "Auto") =>
   json(`${API}/samples`, {
     method: "POST",
@@ -88,24 +54,17 @@ export const bundle = async (id) => {
 };
 export const investigation = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/investigation`);
-export const explainInvestigation = (id, question = "") => {
-  const query = question.trim()
-    ? `?question=${encodeURIComponent(question.trim())}`
-    : "";
-  return json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain${query}`, {
+export const askInspectionAssistant = (id, question) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/assistant/ask`, {
     method: "POST",
-    timeoutMs: 90000,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
   });
-};
-export const saveInvestigationSnapshot = (id, trigger = "manual") =>
-  json(
-    `${API}/samples/${encodeURIComponent(id)}/investigation/snapshot?trigger=${encodeURIComponent(trigger)}`,
-    { method: "POST" },
-  );
-export const investigationSnapshots = (id, limit = 20) =>
-  json(
-    `${API}/samples/${encodeURIComponent(id)}/investigation/snapshots?limit=${limit}`,
-  );
+export const explainInvestigation = (id) =>
+  json(`${API}/samples/${encodeURIComponent(id)}/investigation/explain`, {
+    method: "POST",
+  });
+export const ollamaHealth = () => json(`${API}/ai/ollama/health`);
 export const activeSample = () => json(`${API}/samples/active`);
 export const activateSample = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/active`, { method: "PUT" });
@@ -120,12 +79,6 @@ export const updateInspectionProfile = (id, payload) =>
 export const inspectionEvents = (id) =>
   json(`${API}/samples/${encodeURIComponent(id)}/events?limit=100`);
 export const validationSummary = () => json(`${API}/datasets/validation`);
-export const createValidationRun = (name = "manual") =>
-  json(`${API}/datasets/validation-runs?name=${encodeURIComponent(name)}`, {
-    method: "POST",
-  });
-export const validationRuns = (limit = 20) =>
-  json(`${API}/datasets/validation-runs?limit=${limit}`);
 export const verifyAssessment = (id, payload) =>
   json(`${API}/samples/${encodeURIComponent(id)}/verification`, {
     method: "POST",

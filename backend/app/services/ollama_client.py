@@ -1,8 +1,9 @@
 """Local Ollama/Gemma client for FreshFusion.
 
-FreshFusion's core verdict remains independent of Ollama. Gemma may explain or
-answer questions about already-computed evidence, but it cannot unlock, replace,
-or invent the deterministic assessment.
+FreshFusion's verdict remains deterministic and evidence-gated. Ollama/Gemma is
+optional and may only explain, summarize, or answer questions from supplied
+evidence. It must never manufacture sensor values, validation metrics, food-
+safety claims, or freshness decisions.
 """
 
 from __future__ import annotations
@@ -15,8 +16,6 @@ import httpx
 
 
 class OllamaClient:
-    """Small async client for a local Ollama server."""
-
     def __init__(
         self,
         base_url: str | None = None,
@@ -58,35 +57,7 @@ class OllamaClient:
             "base_url": self.base_url,
         }
 
-    async def explain(
-        self,
-        evidence: dict[str, Any],
-        question: str | None = None,
-    ) -> dict[str, Any]:
-        """Explain supplied evidence or answer one evidence-grounded question."""
-        system_prompt = (
-            "You are the FreshFusion evidence explainer. Use ONLY the supplied "
-            "FreshFusion evidence. Never invent sensor values, calibration, accuracy, "
-            "dataset probabilities, food-safety claims, or a freshness verdict that "
-            "is not present in the deterministic decision. If evidence is missing or "
-            "contradictory, state that clearly. The deterministic critic/fusion result "
-            "is authoritative. Return valid JSON with keys: summary, "
-            "supporting_evidence, contradictions, missing_evidence, "
-            "recommended_next_step."
-        )
-        user_question = (question or "").strip()
-        question_block = (
-            f"\n\nUSER QUESTION:\n{user_question}"
-            if user_question
-            else "\n\nTASK:\nExplain the current evidence and what should happen next."
-        )
-        prompt = (
-            f"{system_prompt}"
-            f"{question_block}\n\n"
-            "FRESHFUSION EVIDENCE JSON:\n"
-            f"{json.dumps(evidence, ensure_ascii=False, default=str)}"
-        )
-
+    async def _generate_json(self, prompt: str) -> dict[str, Any]:
         request_payload = {
             "model": self.model,
             "prompt": prompt,
@@ -94,7 +65,6 @@ class OllamaClient:
             "format": "json",
             "options": {"temperature": 0.1},
         }
-
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
                 f"{self.base_url}/api/generate",
@@ -102,21 +72,27 @@ class OllamaClient:
             )
             response.raise_for_status()
             payload = response.json()
-
         raw = payload.get("response", "{}")
         try:
-            result = json.loads(raw)
+            return json.loads(raw)
         except json.JSONDecodeError:
-            result = {
-                "summary": raw.strip() or "No explanation returned.",
-                "supporting_evidence": [],
-                "contradictions": [],
-                "missing_evidence": [],
-                "recommended_next_step": "Review deterministic FreshFusion evidence.",
-            }
+            return {"answer": raw.strip()}
 
+    async def explain(self, evidence: dict[str, Any]) -> dict[str, Any]:
+        system_prompt = (
+            "You are the FreshFusion evidence explainer. Use ONLY the supplied "
+            "evidence. Never invent sensor values, calibration, accuracy, dataset "
+            "probabilities, shelf life, or food-safety claims. If evidence is "
+            "insufficient, say so. Return JSON with keys: summary, "
+            "supporting_evidence, contradictions, missing_evidence, "
+            "recommended_next_step."
+        )
+        result = await self._generate_json(
+            f"{system_prompt}\n\nFRESHFUSION EVIDENCE JSON:\n"
+            f"{json.dumps(evidence, ensure_ascii=False, default=str)}"
+        )
         return {
-            "summary": str(result.get("summary") or "Evidence explanation unavailable."),
+            "summary": str(result.get("summary") or result.get("answer") or "Evidence explanation unavailable."),
             "supporting_evidence": list(result.get("supporting_evidence") or []),
             "contradictions": list(result.get("contradictions") or []),
             "missing_evidence": list(result.get("missing_evidence") or []),
@@ -124,9 +100,34 @@ class OllamaClient:
                 result.get("recommended_next_step")
                 or "Review deterministic FreshFusion evidence."
             ),
-            "question": user_question or None,
             "model": self.model,
             "role": "explanation_only",
+        }
+
+    async def answer(self, question: str, evidence: dict[str, Any]) -> dict[str, Any]:
+        """Answer an operator question without changing the deterministic verdict."""
+        system_prompt = (
+            "You are the FreshFusion inspection assistant. Answer the user's "
+            "question using ONLY the supplied FreshFusion evidence and previous "
+            "inspection context. Use simple operator-friendly language. Never "
+            "invent values, universal MQ135 standards, accuracy, probabilities, "
+            "shelf-life days, internal quality, or food-safety claims. Never "
+            "override the deterministic verdict. If evidence cannot answer the "
+            "question, clearly say what is missing. Return valid JSON with keys: "
+            "answer, evidence_used, uncertainty, next_action."
+        )
+        result = await self._generate_json(
+            f"{system_prompt}\n\nUSER QUESTION:\n{question}\n\n"
+            "FRESHFUSION EVIDENCE JSON:\n"
+            f"{json.dumps(evidence, ensure_ascii=False, default=str)}"
+        )
+        return {
+            "answer": str(result.get("answer") or "I could not answer that from the available evidence."),
+            "evidence_used": [str(x) for x in list(result.get("evidence_used") or [])[:8]],
+            "uncertainty": str(result.get("uncertainty") or "Evidence limits still apply."),
+            "next_action": str(result.get("next_action") or "Review the current inspection evidence."),
+            "model": self.model,
+            "role": "evidence_qna_only",
         }
 
 

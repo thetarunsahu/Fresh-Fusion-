@@ -54,11 +54,23 @@ class SampleOut(BaseModel):
 class InspectionProfileIn(BaseModel):
     approximate_weight_g: float | None = Field(default=None, gt=0, le=100000)
     fruit_count: int = Field(default=1, ge=1, le=500)
+    fruit_instance_id: str | None = Field(default=None, max_length=80)
     batch_id: str | None = Field(default=None, max_length=80)
     supplier: str | None = Field(default=None, max_length=120)
     storage_location: str | None = Field(default=None, max_length=120)
     inspection_duration_seconds: int | None = Field(default=None, ge=10, le=3600)
     chamber_purged: bool | None = None
+
+
+class AssistantQuestionIn(BaseModel):
+    question: str = Field(min_length=2, max_length=500)
+
+    @model_validator(mode="after")
+    def normalize_question(self):
+        self.question = " ".join(self.question.strip().split())
+        if len(self.question) < 2:
+            raise ValueError("Question is too short")
+        return self
 
 
 class SensorIn(BaseModel):
@@ -83,15 +95,17 @@ class SensorIn(BaseModel):
 
 
 class VerificationIn(BaseModel):
-    action: Literal["accept", "incorrect", "ground_truth"]
+    action: Literal["accept", "incorrect", "ground_truth", "override"]
     ground_truth: Literal["fresh", "ripe", "overripe", "spoiled"] | None = None
     notes: str = Field(default="", max_length=2000)
     reviewer: str = Field(default="", max_length=100)
 
     @model_validator(mode="after")
     def require_label(self):
-        if self.action == "ground_truth" and self.ground_truth is None:
+        if self.action in {"ground_truth", "override"} and self.ground_truth is None:
             raise ValueError("Choose a FreshFusion ground-truth label")
+        if self.action == "override" and len(self.notes.strip()) < 3:
+            raise ValueError("Explain why the system assessment is being overridden")
         return self
 
 

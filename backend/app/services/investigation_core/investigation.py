@@ -6,6 +6,7 @@ from ..inspection_events import recent_events
 from ..image_quality_gate import evaluate_image_quality
 from ..product_rules import recommendation, score_breakdown, SUPPORTED_FRUITS
 from ..sensor_drift import assess_historical_drift
+from ..provenance import decision_provenance
 from .evidence import collect_evidence, sample_info
 from .analysts import summarize_analysts
 from .confidence import decision_from_fusion
@@ -14,11 +15,13 @@ from .confidence import decision_from_fusion
 def _profile_info(db, sample_id):
     row = db.query(InspectionProfile).filter_by(sample_id=sample_id).first()
     if not row:
-        return {"fruit_count": 1, "approximate_weight_g": None, "batch_id": None, "supplier": None,
-                "storage_location": None, "protocol": {}}
+        return {"fruit_count": 1, "approximate_weight_g": None, "fruit_instance_id": None,
+                "batch_id": None, "supplier": None, "storage_location": None, "protocol": {}}
+    protocol = row.protocol or {}
     return {"fruit_count": row.fruit_count, "approximate_weight_g": row.approximate_weight_g,
+            "fruit_instance_id": protocol.get("fruit_instance_id"),
             "batch_id": row.batch_id, "supplier": row.supplier, "storage_location": row.storage_location,
-            "protocol": row.protocol or {}}
+            "protocol": protocol}
 
 
 def _protocol_state(sample, profile):
@@ -36,6 +39,8 @@ def _protocol_state(sample, profile):
         issues.append(f"Inspection stabilization time is not complete: {int(elapsed)}s of {int(target)}s.")
     if profile.get("fruit_count", 1) > 1 and profile.get("approximate_weight_g") is None:
         warnings.append("Multiple fruits are recorded without approximate weight; gas-response comparison may be harder to interpret.")
+    if not profile.get("fruit_instance_id"):
+        warnings.append("No physical fruit specimen ID is assigned; repeated-inspection validation leakage cannot be prevented reliably.")
     return {
         "ready": not issues,
         "elapsed_seconds": round(elapsed, 1),
@@ -119,6 +124,7 @@ def investigate(db, sample):
             "image_quality": image_quality,
             "sensor_drift": sensor_drift,
             "events": recent_events(db, sample.sample_id, 30),
+            "provenance": decision_provenance(),
         },
         "timeline": timeline,
         "timeline_note": "Newest 200 frames, 200 readings and 100 stored fusion results; rolling preview retention may remove older frames. Analysis events share their frame timestamp.",

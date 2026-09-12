@@ -1,15 +1,12 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import FruitImage, HumanVerification, ValidationRun
+from ..models import FruitImage, HumanVerification
 from ..services.ai import MODEL_PATH, LABELS_PATH
 from ..services.datasets import DATASETS, dataset_registry, reference_index_status
-from ..services.validation import (
-    current_validation_snapshot,
-    persist_validation_run,
-    serialize_validation_run,
-)
+from ..services.validation_metrics import compute_metrics, split_manifest
+from ..services.empirical_calibration import calibration_summary
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -26,22 +23,14 @@ def reference_status():
 
 @router.get("/validation")
 def validation(db: Session = Depends(get_db)):
-    evaluation = current_validation_snapshot(db)
-    latest_run = (
-        db.query(ValidationRun)
-        .order_by(ValidationRun.created_at.desc(), ValidationRun.id.desc())
-        .first()
-    )
-    # Preserve the legacy metric contract without fabricating an empty matrix as
-    # a measured result. Until at least one comparable human-labelled inspection
-    # exists, every legacy metric value remains explicitly unavailable.
-    has_comparable_samples = evaluation["sample_count"] > 0
-    legacy_metrics = {
-        name: {
-            "status": evaluation["status"],
-            "value": evaluation.get(name) if has_comparable_samples else None,
-        }
-        for name in ["accuracy", "precision", "recall", "f1", "confusion_matrix"]
+    real = compute_metrics(db)
+    calibration = calibration_summary(db)
+    metrics = {
+        "accuracy": {"status": real["status"], "value": real["accuracy"]},
+        "precision": {"status": real["status"], "value": real["macro_precision"]},
+        "recall": {"status": real["status"], "value": real["macro_recall"]},
+        "f1": {"status": real["status"], "value": real["macro_f1"]},
+        "confusion_matrix": {"status": real["status"], "value": real["confusion_matrix"]},
     }
     return {
         "datasets": DATASETS,
@@ -51,38 +40,22 @@ def validation(db: Session = Depends(get_db)):
         "human_labelled_inspections": db.query(HumanVerification.sample_id).filter(HumanVerification.ground_truth.isnot(None)).distinct().count(),
         "model": {
             "status": "artifacts_present_unverified" if MODEL_PATH.exists() and LABELS_PATH.exists() else "not_deployed",
-            "note": (
-                "Artifact presence does not establish successful inference or measured accuracy. "
-                "Identity currently uses CV/reference heuristics."
-            ),
+            "note": "Artifact presence does not establish successful inference or measured accuracy. Identity currently uses CV/reference heuristics plus conservative Tomato compatibility support.",
         },
-        "metrics": legacy_metrics,
-        "evaluation": evaluation,
-        "latest_persisted_run": serialize_validation_run(latest_run) if latest_run else None,
-        "label_policy": (
-            "FreshFusion human labels are stored separately from published fresh/normal/rotten reference classes. "
-            "Reviews are not automatically propagated to every camera frame."
-        ),
+        "metrics": metrics,
+        "validation": real,
+        "calibration": calibration,
+        "claim_ready": real["claim_ready"],
+        "label_policy": "FreshFusion human labels are stored separately from published reference classes. Metrics use only human ground truth paired with verified system decisions.",
+        "split_policy": "Repeated views and repeated inspections should share a fruit_instance_id; deterministic split assignment then keeps that physical specimen in one train/validation/test partition.",
     }
 
 
-@router.post("/validation-runs", status_code=201)
-def create_validation_run(
-    name: str = Query(default="manual", min_length=1, max_length=120),
-    db: Session = Depends(get_db),
-):
-    return serialize_validation_run(persist_validation_run(db, name=name))
+@router.get("/validation/manifest")
+def validation_manifest(db: Session = Depends(get_db)):
+    return split_manifest(db)
 
 
-@router.get("/validation-runs")
-def list_validation_runs(
-    limit: int = Query(default=20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    rows = (
-        db.query(ValidationRun)
-        .order_by(ValidationRun.created_at.desc(), ValidationRun.id.desc())
-        .limit(limit)
-        .all()
-    )
-    return [serialize_validation_run(row) for row in rows]
+@router.get("/calibration")
+def calibration(db: Session = Depends(get_db)):
+    return calibration_summary(db)
