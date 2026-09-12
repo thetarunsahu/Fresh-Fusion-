@@ -78,19 +78,18 @@ def investigate(db, sample):
     sensor_evidence = (fusion.get("components") or {}).get("sensor_evidence", evidence.get("sensors", {}))
     sensor_drift = assess_historical_drift(db, sample.sample_id, sensor_evidence)
 
-    analysts = summarize_analysts(evidence, fusion)
+    analysts = summarize_analysts(evidence, fusion, sample=sample)
     vision = analysts.get("vision", {})
-    detected_fruit = (vision.get("identity") or {}).get("fruit")
+    displayed_identity = vision.get("identity") or {}
+    raw_identity = vision.get("raw_identity") or {}
+    detected_fruit = raw_identity.get("fruit") or displayed_identity.get("fruit")
     sample_fruit = str(sample.fruit_type or "").strip()
     locked_fruit = sample_fruit if sample_fruit.lower() in SUPPORTED_FRUITS else None
 
-    # Product UI must not flicker with every noisy camera frame. Once the sample
-    # has an accepted Apple/Banana/Tomato identity, that sample identity is the
-    # operator-facing fruit name. Per-frame CV identity is still retained below
-    # as diagnostic evidence and may trigger a conflict warning/correction in the
-    # image router, but it no longer replaces the title on every refresh.
     if locked_fruit:
         fruit = locked_fruit.title()
+    elif str(displayed_identity.get("fruit") or "").lower() in SUPPORTED_FRUITS:
+        fruit = displayed_identity.get("fruit")
     elif str(detected_fruit or "").lower() in SUPPORTED_FRUITS:
         fruit = detected_fruit
     else:
