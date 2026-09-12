@@ -16,10 +16,41 @@ def _deterministic_assistant(question: str, investigation: dict) -> dict:
     q = question.lower()
     decision = investigation.get("decision") or {}
     product = investigation.get("product") or {}
-    sensor = ((investigation.get("analysts") or {}).get("sensor") or {})
+    analysts = investigation.get("analysts") or {}
+    sensor = analysts.get("sensor") or {}
+    vision = analysts.get("vision") or {}
+    multiview = analysts.get("multiview") or {}
     image_quality = product.get("image_quality") or {}
     comparison = product.get("condition_comparison") or {}
     recommendation = product.get("recommendation") or {}
+    score_info = product.get("score_breakdown") or {}
+    fruit = product.get("fruit") or (investigation.get("sample") or {}).get("fruit_type") or "fruit"
+    score = decision.get("freshness_score") if decision.get("verdict_ready") else product.get("provisional_quality_score") or score_info.get("provisional_score")
+    damage = (vision.get("defects") or {}).get("visible_damage_estimate_pct")
+    views_count = multiview.get("views_count") or len(multiview.get("views") or [])
+
+    if any(word in q for word in ("score", "why", "freshness", "quality")):
+        pieces = []
+        if score is not None:
+            pieces.append(f"current {'final' if decision.get('verdict_ready') else 'provisional'} quality score {round(float(score))}/100")
+        sensor_score = score_info.get("sensor", {}).get("score")
+        vision_score = score_info.get("vision", {}).get("provisional_score") or score_info.get("vision", {}).get("score")
+        if vision_score is not None:
+            pieces.append(f"vision evidence {round(float(vision_score))}/100")
+        if sensor_score is not None:
+            pieces.append(f"sensor evidence {round(float(sensor_score))}/100")
+        if damage is not None:
+            pieces.append(f"visible surface damage {round(float(damage))}%")
+        pieces.append(f"{views_count}/3 changed views verified")
+        reason = decision.get("reason") or "The evidence gate is still being checked."
+        return {
+            "answer": f"For this {fruit}, " + ", ".join(pieces) + f". {reason}",
+            "evidence_used": ["live quality score", "vision evidence", "sensor evidence", "multi-view status"],
+            "uncertainty": "The score is provisional until the final evidence gate passes; prototype weights are not validated scientific constants.",
+            "next_action": recommendation.get("action") or ("Capture the remaining changed views and keep the ESP32 reading current." if views_count < 3 else "Complete the remaining evidence check shown in Live Inspection."),
+            "model": "deterministic-fallback",
+            "role": "evidence_qna_only",
+        }
 
     if any(word in q for word in ("sell", "sale", "action", "do", "recommend")):
         answer = recommendation.get("action") or "Collect more evidence before taking a stock action."
@@ -62,16 +93,17 @@ def _deterministic_assistant(question: str, investigation: dict) -> dict:
             "role": "evidence_qna_only",
         }
 
-    if any(word in q for word in ("image", "camera", "blur", "light", "view", "photo")):
+    if any(word in q for word in ("image", "camera", "blur", "light", "view", "photo", "missing", "evidence")):
         issues = image_quality.get("issues") or []
         answer = "Camera evidence is usable." if not image_quality.get("blocking") else "Camera evidence needs improvement before the result can be trusted."
         if issues:
             answer += " " + " ".join(str(x) for x in issues[:3])
+        answer += f" Current changed-view coverage is {views_count}/3. One camera is enough for fruit identity; the extra views improve surface coverage and physical verification."
         return {
             "answer": answer,
             "evidence_used": ["image quality gate", "multi-view check"],
             "uncertainty": "Phone-camera physical verification is probabilistic and does not provide true depth sensing.",
-            "next_action": "Capture three clear, well-lit, genuinely changed viewpoints of the physical fruit.",
+            "next_action": "Capture the remaining clear, well-lit changed viewpoints of the same physical fruit." if views_count < 3 else "Review any remaining sensor or critic warning shown in Live Inspection.",
             "model": "deterministic-fallback",
             "role": "evidence_qna_only",
         }
@@ -93,17 +125,26 @@ def _deterministic_assistant(question: str, investigation: dict) -> dict:
         }
 
     if not decision.get("verdict_ready"):
+        latest = sensor.get("latest") or {}
+        compact = []
+        if score is not None:
+            compact.append(f"provisional score {round(float(score))}/100")
+        if damage is not None:
+            compact.append(f"visible damage {round(float(damage))}%")
+        if latest.get("mq135_raw") is not None:
+            compact.append(f"MQ135 {latest['mq135_raw']} ADC")
+        compact.append(f"views {views_count}/3")
         return {
-            "answer": "I cannot give a firm fruit-quality answer yet because FreshFusion has not released a verified assessment. " + str(decision.get("reason") or "More evidence is required."),
-            "evidence_used": ["decision gate", "evidence critic"],
-            "uncertainty": "The assessment is intentionally locked until the required evidence is available.",
-            "next_action": "Follow the current evidence request shown on the Live Inspection page.",
+            "answer": f"Current {fruit} snapshot: " + ", ".join(compact) + ". " + str(decision.get("reason") or "More evidence is required before the final verdict is released."),
+            "evidence_used": ["current fruit identity", "live score", "sensor evidence", "evidence critic"],
+            "uncertainty": "The assessment is intentionally locked until required evidence is available.",
+            "next_action": recommendation.get("action") or "Follow the highlighted evidence request shown on the Live Inspection page.",
             "model": "deterministic-fallback",
             "role": "evidence_qna_only",
         }
 
     return {
-        "answer": f"Current verified condition: {decision.get('label')}. Risk: {decision.get('risk')}. " + str(decision.get("reason") or "The result uses the currently verified evidence."),
+        "answer": f"Current verified condition for {fruit}: {decision.get('label')}. Score: {decision.get('freshness_score')}/100. Risk: {decision.get('risk')}. " + str(decision.get("reason") or "The result uses the currently verified evidence."),
         "evidence_used": ["deterministic decision", "evidence critic", "sensor and vision evidence"],
         "uncertainty": "Freshness scoring remains calibration-dependent and is not food-safety certification.",
         "next_action": recommendation.get("action") or "Continue monitoring if the fruit remains in storage.",
