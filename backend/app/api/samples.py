@@ -13,6 +13,8 @@ from ..services.investigation_core.evidence import sample_info, verification_inf
 from ..services.inspection_events import recent_events, record_event
 
 router = APIRouter(prefix="/samples", tags=["samples"])
+SUPPORTED_IDENTITIES = {"Apple", "Banana", "Tomato"}
+
 
 @router.post("", response_model=SampleOut)
 def create_sample(payload: SampleCreate, db: Session = Depends(get_db)):
@@ -24,6 +26,7 @@ def create_sample(payload: SampleCreate, db: Session = Depends(get_db)):
     db.commit(); db.refresh(sample)
     set_active(db, sample)
     return sample
+
 
 @router.get("")
 def list_samples(limit: int = 50, db: Session = Depends(get_db)):
@@ -41,10 +44,12 @@ def list_samples(limit: int = 50, db: Session = Depends(get_db)):
                        "verification_state": gate.get("status", "not-assessed")})
     return output
 
+
 @router.get("/active")
 def get_active(db: Session = Depends(get_db)):
     sample = active_sample(db)
     return sample_info(sample) if sample else None
+
 
 @router.put("/{sample_id}/active")
 def activate(sample_id: str, db: Session = Depends(get_db)):
@@ -53,6 +58,7 @@ def activate(sample_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Sample not found")
     set_active(db, sample)
     return sample_info(sample)
+
 
 @router.get("/{sample_id}/profile")
 def get_profile(sample_id: str, db: Session = Depends(get_db)):
@@ -68,6 +74,7 @@ def get_profile(sample_id: str, db: Session = Depends(get_db)):
             "fruit_instance_id": protocol.get("fruit_instance_id"),
             "batch_id": row.batch_id, "supplier": row.supplier, "storage_location": row.storage_location,
             "protocol": protocol, "updated_at": utc_iso(row.updated_at)}
+
 
 @router.put("/{sample_id}/profile")
 def update_profile(sample_id: str, payload: InspectionProfileIn, db: Session = Depends(get_db)):
@@ -92,11 +99,13 @@ def update_profile(sample_id: str, payload: InspectionProfileIn, db: Session = D
     db.commit(); db.refresh(row)
     return get_profile(sample_id, db)
 
+
 @router.get("/{sample_id}/events")
 def events(sample_id: str, limit: int = 50, db: Session = Depends(get_db)):
     if not db.query(FruitSample).filter_by(sample_id=sample_id).first():
         raise HTTPException(404, "Sample not found")
     return recent_events(db, sample_id, min(limit, 200))
+
 
 @router.post("/{sample_id}/verification", status_code=201)
 def verify(sample_id: str, payload: VerificationIn, db: Session = Depends(get_db)):
@@ -135,10 +144,53 @@ def verify(sample_id: str, payload: VerificationIn, db: Session = Depends(get_db
     db.refresh(row)
     return verification_info(row)
 
+
+def _bundle_analysis(image: FruitImage, sample: FruitSample) -> dict:
+    """Return a UI-stable analysis without mutating stored raw evidence.
+
+    Older frames may predate temporal stabilization. For presentation, the
+    inspection's accepted fruit identity is authoritative; raw frame identity is
+    retained alongside it for engineering diagnostics.
+    """
+    analysis = dict(image.analysis or {})
+    raw_identity = dict(analysis.get("raw_frame_identity") or analysis.get("identity") or {})
+    stable = str(sample.fruit_type or "").strip().title()
+    if stable in SUPPORTED_IDENTITIES:
+        identity = dict(analysis.get("identity") or {})
+        analysis["raw_frame_identity"] = raw_identity
+        state = dict(analysis.get("identity_state") or {})
+        state.setdefault("raw_frame_fruit", raw_identity.get("fruit"))
+        state.setdefault("raw_frame_confidence", raw_identity.get("confidence"))
+        state["stable_fruit"] = stable
+        analysis["identity_state"] = state
+        analysis["identity"] = {
+            **identity,
+            "fruit": stable,
+            "raw_frame_fruit": raw_identity.get("fruit"),
+            "raw_frame_confidence": raw_identity.get("confidence"),
+            "stabilized": True,
+            "method": "inspection-stabilized identity",
+        }
+        analysis["fruit_type"] = stable
+    return analysis
+
+
+def _serialize_image(image: FruitImage, sample: FruitSample) -> dict:
+    return {
+        "id": image.id,
+        "angle": image.angle,
+        "ground_truth": image.ground_truth,
+        "url": image.url,
+        "analysis": _bundle_analysis(image, sample),
+        "uploaded_at": utc_iso(image.uploaded_at),
+    }
+
+
 @router.get("/{sample_id}/bundle")
 def bundle(sample_id: str, db: Session = Depends(get_db)):
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
-    if not sample: raise HTTPException(404, "Sample not found")
+    if not sample:
+        raise HTTPException(404, "Sample not found")
     sensors = db.query(SensorReading).filter(SensorReading.sample_id == sample_id).order_by(SensorReading.captured_at.desc()).limit(500).all()
     sensors.reverse()
     images = db.query(FruitImage).filter(FruitImage.sample_id == sample_id).order_by(FruitImage.uploaded_at.desc()).all()
@@ -146,12 +198,14 @@ def bundle(sample_id: str, db: Session = Depends(get_db)):
     return {
         "sample": sample_info(sample),
         "sensors": [serialize_sensor(s) for s in sensors],
-        "images": [{"id": i.id, "angle": i.angle, "ground_truth": i.ground_truth, "url": i.url, "analysis": i.analysis, "uploaded_at": utc_iso(i.uploaded_at)} for i in images],
+        "images": [_serialize_image(i, sample) for i in images],
         "fusion": {**evaluate_fusion(db, sample), "created_at": utc_iso(result.created_at) if result else None},
     }
+
 
 @router.post("/{sample_id}/fusion")
 def fuse(sample_id: str, db: Session = Depends(get_db)):
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
-    if not sample: raise HTTPException(404, "Sample not found")
+    if not sample:
+        raise HTTPException(404, "Sample not found")
     return compute_fusion(db, sample)
