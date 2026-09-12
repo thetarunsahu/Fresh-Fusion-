@@ -1,5 +1,5 @@
 import secrets
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from ..database import get_db
@@ -58,6 +58,37 @@ def activate(sample_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Sample not found")
     set_active(db, sample)
     return sample_info(sample)
+
+
+@router.put("/{sample_id}/identity")
+def confirm_identity(sample_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Confirm the physical fruit identity for this inspection.
+
+    Auto vision remains a suggestion. Once the operator confirms Apple, Banana
+    or Tomato, all product-facing analysis uses that inspection identity while
+    raw per-frame predictions remain diagnostic evidence.
+    """
+    sample = db.query(FruitSample).filter_by(sample_id=sample_id).first()
+    if not sample:
+        raise HTTPException(404, "Sample not found")
+    fruit = str(payload.get("fruit_type") or "").strip().title()
+    if fruit not in SUPPORTED_IDENTITIES:
+        raise HTTPException(422, "fruit_type must be Apple, Banana or Tomato")
+    previous = sample.fruit_type
+    sample.fruit_type = fruit
+    sample.source = "operator-confirmed"
+    db.add(sample)
+    record_event(
+        db,
+        sample_id,
+        "fruit_identity_confirmed",
+        f"Operator confirmed fruit identity as {fruit}.",
+        severity="info",
+        payload={"previous_identity": previous, "confirmed_identity": fruit},
+    )
+    db.commit(); db.refresh(sample)
+    compute_fusion(db, sample)
+    return {**sample_info(sample), "identity_confirmed": True}
 
 
 @router.get("/{sample_id}/profile")
@@ -146,12 +177,7 @@ def verify(sample_id: str, payload: VerificationIn, db: Session = Depends(get_db
 
 
 def _bundle_analysis(image: FruitImage, sample: FruitSample) -> dict:
-    """Return a UI-stable analysis without mutating stored raw evidence.
-
-    Older frames may predate temporal stabilization. For presentation, the
-    inspection's accepted fruit identity is authoritative; raw frame identity is
-    retained alongside it for engineering diagnostics.
-    """
+    """Return a UI-stable analysis without mutating stored raw evidence."""
     analysis = dict(image.analysis or {})
     raw_identity = dict(analysis.get("raw_frame_identity") or analysis.get("identity") or {})
     stable = str(sample.fruit_type or "").strip().title()
