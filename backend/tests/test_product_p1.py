@@ -43,6 +43,48 @@ class ProductP1Tests(unittest.TestCase):
         result = enhance_identity(self.tomato_analysis(), "Tomato")
         self.assertIn("not a trained Tomato classifier", result["identity"]["note"])
 
+    def test_round_red_apple_can_recover_from_banana_frame_guess(self):
+        analysis = {
+            "quality": {"fruit_present": True},
+            "identity": {
+                "fruit": "Banana",
+                "confidence": 71.0,
+                "shape": {"circularity": 0.67, "aspect_ratio": 1.18, "solidity": 0.90},
+                "supported": ["Apple", "Banana"],
+            },
+            "color": {
+                "red_pct": 35.0,
+                "green_pct": 4.0,
+                "yellow_pct": 12.0,
+                "brown_pct": 3.0,
+                "dark_pct": 2.0,
+            },
+        }
+        result = enhance_identity(analysis, "Auto")
+        self.assertEqual(result["identity"]["fruit"], "Apple")
+        self.assertTrue(result["identity"]["apple_candidate"]["strong_candidate"])
+
+    def test_elongated_browned_banana_can_recover_from_apple_guess(self):
+        analysis = {
+            "quality": {"fruit_present": True},
+            "identity": {
+                "fruit": "Apple",
+                "confidence": 70.0,
+                "shape": {"circularity": 0.48, "aspect_ratio": 2.15, "solidity": 0.82},
+                "supported": ["Apple", "Banana"],
+            },
+            "color": {
+                "red_pct": 4.0,
+                "green_pct": 6.0,
+                "yellow_pct": 22.0,
+                "brown_pct": 28.0,
+                "dark_pct": 8.0,
+            },
+        }
+        result = enhance_identity(analysis, "Auto")
+        self.assertEqual(result["identity"]["fruit"], "Banana")
+        self.assertTrue(result["identity"]["banana_candidate"]["strong_candidate"])
+
     def test_identity_consensus_rejects_apple_banana_flicker(self):
         history = [
             {"fruit": "Apple", "confidence": 84.0},
