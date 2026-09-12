@@ -1,9 +1,9 @@
 """Conservative extensions for fruit identity support.
 
 The base image analyser was originally tuned for Apple/Banana. This module adds
-Tomato compatibility using already-computed shape and colour features. It does
-not claim that a single RGB frame can always distinguish a tomato from a red
-apple, so auto mode requires a stronger cue set than manual Tomato mode.
+extra Banana robustness for ripe/browned fruit and Tomato compatibility using
+already-computed shape and colour features. It does not claim that a single RGB
+frame is definitive; stream routing still requires temporal consensus.
 """
 
 from __future__ import annotations
@@ -16,11 +16,16 @@ def _f(value, default=0.0):
         return default
 
 
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
 def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
     identity = dict(analysis.get("identity") or {})
     supported = list(identity.get("supported") or [])
-    if "Tomato" not in supported:
-        supported.append("Tomato")
+    for fruit in ("Apple", "Banana", "Tomato"):
+        if fruit not in supported:
+            supported.append(fruit)
     identity["supported"] = supported
 
     if (analysis.get("quality") or {}).get("fruit_present") is not True:
@@ -33,15 +38,76 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
     green = _f(color.get("green_pct"))
     yellow = _f(color.get("yellow_pct"))
     brown = _f(color.get("brown_pct"))
+    dark = _f(color.get("dark_pct"))
     circularity = _f(shape.get("circularity"))
     aspect = _f(shape.get("aspect_ratio"), 99.0)
     solidity = _f(shape.get("solidity"))
 
-    round_score = max(0.0, min(1.0, (circularity - 0.40) / 0.38))
-    aspect_score = max(0.0, min(1.0, (1.65 - aspect) / 0.50))
-    solidity_score = max(0.0, min(1.0, (solidity - 0.64) / 0.30))
-    red_score = max(0.0, min(1.0, red / 48.0))
-    green_support = max(0.0, min(1.0, green / 32.0))
+    requested = str(requested_fruit or "Auto").strip().lower()
+    current = str(identity.get("fruit") or "Unknown")
+    current_confidence = _f(identity.get("confidence"))
+
+    # Banana robustness -----------------------------------------------------
+    # Ripe/overripe bananas often lose the yellow/green cue that the original
+    # detector relied on. Their elongated silhouette remains useful, so combine
+    # shape with yellow/green/brown skin evidence instead of requiring yellow.
+    elongation = _clamp01((aspect - 1.28) / 1.05)
+    low_roundness = _clamp01((0.74 - circularity) / 0.34)
+    banana_solidity = _clamp01((solidity - 0.48) / 0.42)
+    banana_skin = _clamp01((yellow + green + 0.72 * brown + 0.20 * dark) / 58.0)
+    red_penalty = _clamp01((red - 18.0) / 34.0)
+    banana_score = max(
+        0.0,
+        elongation * 0.46
+        + low_roundness * 0.20
+        + banana_solidity * 0.10
+        + banana_skin * 0.24
+        - red_penalty * 0.18,
+    )
+    banana_confidence = round(min(96.0, banana_score * 100.0), 1)
+    strong_banana = (
+        aspect >= 1.58
+        and circularity <= 0.72
+        and banana_confidence >= 70.0
+    ) or (
+        aspect >= 1.78
+        and circularity <= 0.66
+        and banana_confidence >= 64.0
+    )
+
+    identity["banana_candidate"] = {
+        "confidence": banana_confidence,
+        "strong_candidate": strong_banana,
+        "elongation_support": round(elongation, 3),
+        "roundness_support": round(low_roundness, 3),
+        "skin_support": round(banana_skin, 3),
+        "note": "Banana cue combines elongated silhouette with yellow/green/brown skin support; temporal consensus is still required.",
+    }
+
+    # If a frame has a strong elongated-banana cue, do not let an ambiguous
+    # Apple fallback win merely because the banana is browned or dimly lit.
+    if strong_banana and requested != "tomato":
+        should_override = (
+            current in {"Unknown", "Apple"}
+            or current_confidence < banana_confidence + 8.0
+            or requested == "banana"
+        )
+        if should_override:
+            identity.update({
+                "fruit": "Banana",
+                "confidence": max(72.0, banana_confidence),
+                "method": "elongated Banana shape + skin evidence + temporal-consensus required",
+                "note": "Banana identity uses shape plus skin evidence so ripe/browned bananas are not forced into the Apple fallback.",
+            })
+            current = "Banana"
+            current_confidence = _f(identity.get("confidence"))
+
+    # Tomato compatibility --------------------------------------------------
+    round_score = _clamp01((circularity - 0.40) / 0.38)
+    aspect_score = _clamp01((1.65 - aspect) / 0.50)
+    solidity_score = _clamp01((solidity - 0.64) / 0.30)
+    red_score = _clamp01(red / 48.0)
+    green_support = _clamp01(green / 32.0)
     colour_score = min(1.0, red_score * 0.82 + green_support * 0.18)
     decay_penalty = min(0.20, brown / 100.0 * 0.35)
 
@@ -54,11 +120,6 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
         - decay_penalty,
     )
     tomato_confidence = round(min(93.0, tomato_score * 100.0), 1)
-
-    requested = str(requested_fruit or "Auto").strip().lower()
-    current = str(identity.get("fruit") or "Unknown")
-    current_confidence = _f(identity.get("confidence"))
-
     strong_round_tomato = (
         tomato_confidence >= 82.0
         and round_score >= 0.72
@@ -78,8 +139,6 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
         "note": "Tomato compatibility heuristic; temporal consensus is required in auto mode because red apples can overlap in RGB appearance.",
     }
 
-    # Explicit operator selection is a strong prior, but still requires the frame
-    # to look compatible with a real tomato rather than blindly relabelling it.
     if requested == "tomato" and tomato_confidence >= 52.0:
         identity.update({
             "fruit": "Tomato",
@@ -87,10 +146,9 @@ def enhance_identity(analysis: dict, requested_fruit: str | None) -> dict:
             "method": "operator-selected Tomato + shape/colour compatibility",
             "note": "Tomato identity is supported by operator selection plus visual compatibility; it is not a trained Tomato classifier.",
         })
-    # Auto mode: permit a genuinely strong tomato cue set to override an Apple
-    # fallback. The stream router still requires repeated-frame consensus before
-    # changing the active fruit identity.
     elif requested in {"auto", "fruit", "unknown", ""} and strong_round_tomato:
+        current = str(identity.get("fruit") or "Unknown")
+        current_confidence = _f(identity.get("confidence"))
         if current == "Unknown" or current_confidence < 76.0 or (
             current == "Apple" and tomato_confidence >= current_confidence - 2.0
         ):
