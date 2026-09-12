@@ -231,7 +231,7 @@ export default function ProductLiveInspection({ session }) {
   const sensorPresent = evidence?.sensors?.physical_present === true || sensor.eligible_readings > 0;
   const ready = decision.verdict_ready === true;
   const label = decision.label || data.fusion?.label;
-  const fruit = product.fruit || vision.identity?.fruit || (sample?.fruit_type !== "Auto" ? sample?.fruit_type : null) || "Fruit";
+  const fruit = product.fruit || (sample?.fruit_type !== "Auto" ? sample?.fruit_type : null) || vision.identity?.fruit || "Fruit";
   const baseAction = actionFor(label, ready);
   const productRecommendation = product.recommendation || {};
   const action = {
@@ -240,7 +240,10 @@ export default function ProductLiveInspection({ session }) {
     risk: productRecommendation.risk ? title(productRecommendation.risk) : baseAction.risk,
   };
   const captureActive = sample?.sample_id && active?.sample_id === sample.sample_id;
-  const score = ready ? decision.freshness_score ?? data.fusion?.freshness_score : null;
+  const scoreBreakdown = product.score_breakdown || {};
+  const finalScore = decision.freshness_score ?? data.fusion?.freshness_score;
+  const provisionalScore = product.provisional_quality_score ?? scoreBreakdown.provisional_score ?? scoreBreakdown.vision?.provisional_score;
+  const score = ready ? finalScore : provisionalScore;
   const visibleDamage = vision.defects?.visible_damage_estimate_pct;
   const evidenceQuality = sensor?.health?.evidence_quality?.level || "unknown";
   const gasDelta = sensor?.baseline_delta_raw;
@@ -295,9 +298,9 @@ export default function ProductLiveInspection({ session }) {
           </div>
         </div>
         <div className="ffScoreCard">
-          <span>Evidence score</span>
+          <span>{ready ? "Final freshness score" : "Provisional quality score"}</span>
           <strong>{score == null ? "--" : Math.round(score)}</strong>
-          <small>{score == null ? "Released after evidence checks" : "/100 · calibration pending"}</small>
+          <small>{score == null ? "Waiting for usable evidence" : ready ? "/100 · final gate passed" : "/100 · live estimate, final still locked"}</small>
         </div>
       </section>
 
