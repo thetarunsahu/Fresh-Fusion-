@@ -15,7 +15,7 @@ from ..realtime import manager
 from ..services.fusion import compute_fusion
 from ..services.image_analysis import analyze_image
 from ..services.fruit_identity_extension import enhance_identity
-from ..services.inspection_control import active_sample, set_active
+from ..services.inspection_control import active_sample
 from ..services.sensor_assessment import utc_iso
 
 router = APIRouter(prefix='/images', tags=['images'])
@@ -24,6 +24,7 @@ STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
 AUTO_IDENTITY_CONFIDENCE = float(os.getenv('AUTO_IDENTITY_CONFIDENCE', '72'))
 AUTO_SCREEN_BLOCK = float(os.getenv('AUTO_SCREEN_BLOCK', '65'))
 IDENTITY_BOOTSTRAP_FRAMES = max(3, int(os.getenv('IDENTITY_BOOTSTRAP_FRAMES', '3')))
+IDENTITY_SWITCH_FRAMES = max(4, int(os.getenv('IDENTITY_SWITCH_FRAMES', '4')))
 
 
 def _relative_artifacts(analysis: dict) -> dict:
@@ -59,12 +60,17 @@ def _identity(analysis: dict) -> tuple[str, float]:
 
 
 def _required_identity_confidence(candidate: str) -> float:
-    # Tomato remains slightly stricter because red apples can overlap in RGB
-    # appearance. Stability comes mainly from temporal consensus below.
     return max(AUTO_IDENTITY_CONFIDENCE, 82.0) if candidate == 'Tomato' else AUTO_IDENTITY_CONFIDENCE
 
 
-def _recent_identity_votes(db: Session, sample_id: str, limit: int = 6) -> list[dict]:
+def _auto_origin(sample: FruitSample) -> bool:
+    source = str(sample.source or '').strip().lower()
+    return sample.sample_id.upper().startswith('AUT-') or source in {
+        'auto', 'auto-camera', 'auto-camera-switch', 'auto-dashboard', 'automatic'
+    }
+
+
+def _recent_identity_votes(db: Session, sample_id: str, limit: int = 8) -> list[dict]:
     rows = (db.query(FruitImage)
         .filter(FruitImage.sample_id == sample_id, FruitImage.angle.like('live-%'))
         .order_by(FruitImage.uploaded_at.desc(), FruitImage.id.desc())
@@ -85,17 +91,18 @@ def _recent_identity_votes(db: Session, sample_id: str, limit: int = 6) -> list[
     return votes
 
 
-def _identity_consensus(candidate: str, confidence: float, history: list[dict]) -> dict:
-    window = [{'fruit': candidate, 'confidence': confidence}, *history][:5]
+def _identity_consensus(candidate: str, confidence: float, history: list[dict], required_frames: int) -> dict:
+    window_size = max(5, required_frames + 1)
+    window = [{'fruit': candidate, 'confidence': confidence}, *history][:window_size]
     counts = Counter(item['fruit'] for item in window)
     candidate_count = counts.get(candidate, 0)
     other_count = sum(value for key, value in counts.items() if key != candidate)
     matching = [item['confidence'] for item in window if item['fruit'] == candidate]
     average = sum(matching) / max(len(matching), 1)
     return {
-        'stable': candidate_count >= IDENTITY_BOOTSTRAP_FRAMES and candidate_count > other_count,
+        'stable': candidate_count >= required_frames and candidate_count >= other_count + 2,
         'candidate_frames': candidate_count,
-        'required_frames': IDENTITY_BOOTSTRAP_FRAMES,
+        'required_frames': required_frames,
         'average_confidence': round(average, 1),
         'recent_votes': [item['fruit'] for item in window],
     }
@@ -112,6 +119,7 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
         'sample_changed': False,
         'previous_sample_id': sample.sample_id,
         'locked_identity': current if current in {'Apple', 'Banana', 'Tomato'} else None,
+        'auto_origin': _auto_origin(sample),
     }
 
     if analysis.get('quality', {}).get('fruit_present') is not True:
@@ -127,30 +135,57 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
         event['required_confidence'] = threshold
         return sample, event
 
-    # Once an inspection has a fruit identity, keep it stable. A noisy frame must
-    # never turn Banana -> Apple -> Banana inside the same inspection. If the user
-    # physically changes fruit, start a new inspection instead of silently moving
-    # evidence between samples.
+    history = _recent_identity_votes(db, sample.sample_id, 8)
+
     if current in {'Apple', 'Banana', 'Tomato'}:
         if current == candidate:
             event['stable_identity'] = current
-        else:
+            return sample, event
+
+        # Explicitly selected inspections stay locked. Auto-created inspections
+        # may correct an early wrong lock, but only after a stronger 4-frame
+        # temporal consensus. This prevents Apple/Banana/Apple flicker while
+        # still recovering when the first few frames were misleading.
+        if not _auto_origin(sample):
             event['identity_conflict'] = True
-            event['routing_blocked'] = 'inspection_identity_locked'
-            event['message'] = f'Inspection is locked to {current}; current frame looks like {candidate}. Start a new inspection if the physical fruit changed.'
+            event['routing_blocked'] = 'operator_identity_locked'
+            event['message'] = f'Inspection is locked to operator-selected {current}; current frame looks like {candidate}.'
+            return sample, event
+
+        correction = _identity_consensus(candidate, confidence, history, IDENTITY_SWITCH_FRAMES)
+        event['identity_consensus'] = correction
+        if not correction['stable'] or correction['average_confidence'] < max(72.0, threshold - 2.0):
+            event['pending_correction'] = True
+            event['identity_conflict'] = True
+            event['message'] = (
+                f'Current auto identity is {current}; {candidate} evidence is being checked '
+                f"({correction['candidate_frames']}/{correction['required_frames']} consistent frames)."
+            )
+            return sample, event
+
+        previous = current
+        sample.fruit_type = candidate
+        sample.source = sample.source or 'auto-camera'
+        db.add(sample)
+        db.commit()
+        db.refresh(sample)
+        event.update({
+            'identity_corrected': True,
+            'previous_identity': previous,
+            'stable_identity': candidate,
+            'message': f'Auto identity corrected from {previous} to {candidate} after repeated-frame consensus.',
+        })
         return sample, event
 
-    history = _recent_identity_votes(db, sample.sample_id, 6)
-    consensus = _identity_consensus(candidate, confidence, history)
+    consensus = _identity_consensus(candidate, confidence, history, IDENTITY_BOOTSTRAP_FRAMES)
     event['identity_consensus'] = consensus
 
-    # Auto mode is intentionally not decided from one frame. Three agreeing frames
-    # are required before we write the fruit family into the sample.
     if not consensus['stable']:
         event['pending_identity'] = True
         return sample, event
 
     sample.fruit_type = candidate
+    sample.source = sample.source or 'auto-camera'
     db.add(sample)
     db.commit()
     db.refresh(sample)
