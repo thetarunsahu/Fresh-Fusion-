@@ -1,6 +1,7 @@
 import os
 import secrets
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -24,7 +25,8 @@ STREAM_KEEP = max(10, int(os.getenv('STREAM_KEEP', '30')))
 AUTO_IDENTITY_CONFIDENCE = float(os.getenv('AUTO_IDENTITY_CONFIDENCE', '72'))
 AUTO_SCREEN_BLOCK = float(os.getenv('AUTO_SCREEN_BLOCK', '65'))
 IDENTITY_BOOTSTRAP_FRAMES = max(3, int(os.getenv('IDENTITY_BOOTSTRAP_FRAMES', '3')))
-IDENTITY_SWITCH_FRAMES = max(4, int(os.getenv('IDENTITY_SWITCH_FRAMES', '4')))
+IDENTITY_SWITCH_FRAMES = max(3, int(os.getenv('IDENTITY_SWITCH_FRAMES', '3')))
+IDENTITY_SWITCH_COOLDOWN_SECONDS = max(4.0, float(os.getenv('IDENTITY_SWITCH_COOLDOWN_SECONDS', '6')))
 
 
 def _relative_artifacts(analysis: dict) -> dict:
@@ -92,20 +94,43 @@ def _recent_identity_votes(db: Session, sample_id: str, limit: int = 8) -> list[
 
 
 def _identity_consensus(candidate: str, confidence: float, history: list[dict], required_frames: int) -> dict:
-    window_size = max(5, required_frames + 1)
+    window_size = max(5, required_frames + 2)
     window = [{'fruit': candidate, 'confidence': confidence}, *history][:window_size]
     counts = Counter(item['fruit'] for item in window)
     candidate_count = counts.get(candidate, 0)
     other_count = sum(value for key, value in counts.items() if key != candidate)
     matching = [item['confidence'] for item in window if item['fruit'] == candidate]
     average = sum(matching) / max(len(matching), 1)
+
+    weighted_total = sum(max(0.05, float(item['confidence']) / 100.0) for item in window)
+    weighted_candidate = sum(
+        max(0.05, float(item['confidence']) / 100.0)
+        for item in window if item['fruit'] == candidate
+    )
+    weighted_share = weighted_candidate / max(weighted_total, 1e-6)
+
     return {
-        'stable': candidate_count >= required_frames and candidate_count >= other_count + 2,
+        'stable': (
+            candidate_count >= required_frames
+            and candidate_count > other_count
+            and weighted_share >= 0.58
+        ),
         'candidate_frames': candidate_count,
         'required_frames': required_frames,
         'average_confidence': round(average, 1),
+        'weighted_share_pct': round(weighted_share * 100.0, 1),
         'recent_votes': [item['fruit'] for item in window],
     }
+
+
+def _seconds_since_identity_update(sample: FruitSample) -> float | None:
+    updated = getattr(sample, 'updated_at', None)
+    if not updated:
+        return None
+    try:
+        return max(0.0, (datetime.utcnow() - updated).total_seconds())
+    except Exception:
+        return None
 
 
 def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> tuple[FruitSample, dict]:
@@ -142,10 +167,6 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
             event['stable_identity'] = current
             return sample, event
 
-        # Explicitly selected inspections stay locked. Auto-created inspections
-        # may correct an early wrong lock, but only after a stronger 4-frame
-        # temporal consensus. This prevents Apple/Banana/Apple flicker while
-        # still recovering when the first few frames were misleading.
         if not _auto_origin(sample):
             event['identity_conflict'] = True
             event['routing_blocked'] = 'operator_identity_locked'
@@ -154,12 +175,25 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
 
         correction = _identity_consensus(candidate, confidence, history, IDENTITY_SWITCH_FRAMES)
         event['identity_consensus'] = correction
-        if not correction['stable'] or correction['average_confidence'] < max(72.0, threshold - 2.0):
+
+        since_update = _seconds_since_identity_update(sample)
+        if since_update is not None and since_update < IDENTITY_SWITCH_COOLDOWN_SECONDS:
+            event['pending_correction'] = True
+            event['identity_conflict'] = True
+            event['routing_blocked'] = 'identity_switch_cooldown'
+            event['message'] = (
+                f'Current auto identity is {current}; checking {candidate} across more frames '
+                f'before allowing another identity switch.'
+            )
+            return sample, event
+
+        if not correction['stable'] or correction['average_confidence'] < max(70.0, threshold - 3.0):
             event['pending_correction'] = True
             event['identity_conflict'] = True
             event['message'] = (
                 f'Current auto identity is {current}; {candidate} evidence is being checked '
-                f"({correction['candidate_frames']}/{correction['required_frames']} consistent frames)."
+                f"({correction['candidate_frames']}/{correction['required_frames']} consistent frames, "
+                f"{correction['weighted_share_pct']}% weighted support)."
             )
             return sample, event
 
@@ -173,7 +207,7 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
             'identity_corrected': True,
             'previous_identity': previous,
             'stable_identity': candidate,
-            'message': f'Auto identity corrected from {previous} to {candidate} after repeated-frame consensus.',
+            'message': f'Auto identity corrected from {previous} to {candidate} after temporal consensus.',
         })
         return sample, event
 
@@ -227,6 +261,17 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
 
     sample, auto_event = _route_detected_fruit(db, sample, analysis)
     sample_id = sample.sample_id
+
+    # Preserve the raw per-frame classifier output for engineering diagnostics,
+    # but publish the temporally stabilized inspection identity separately.
+    analysis['identity_state'] = {
+        'stable_fruit': sample.fruit_type if sample.fruit_type in {'Apple', 'Banana', 'Tomato'} else None,
+        'raw_frame_fruit': (analysis.get('identity') or {}).get('fruit'),
+        'raw_frame_confidence': (analysis.get('identity') or {}).get('confidence'),
+        'pending_correction': bool(auto_event.get('pending_correction')),
+        'identity_conflict': bool(auto_event.get('identity_conflict')),
+        'consensus': auto_event.get('identity_consensus'),
+    }
 
     record = FruitImage(
         sample_id=sample_id,
