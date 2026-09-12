@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import FruitSample
+from ..models import FruitSample, InvestigationRun
 from ..schemas import AssistantQuestionIn
 from ..services.investigation_core.investigation import investigate as build_investigation_summary
 from ..services.inspection_events import record_event
@@ -118,6 +118,29 @@ def get_investigation(sample_id: str, db: Session = Depends(get_db)):
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
     return build_investigation_summary(db, sample)
+
+
+@router.post("/samples/{sample_id}/investigation/snapshot")
+def save_investigation_snapshot(
+    sample_id: str,
+    payload: dict = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+):
+    sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+    snapshot = build_investigation_summary(db, sample)
+    trigger = str(payload.get("trigger") or "manual-ui")[:40]
+    run = InvestigationRun(sample_id=sample_id, trigger=trigger, snapshot=snapshot)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return {
+        "id": run.id,
+        "sample_id": sample_id,
+        "trigger": run.trigger,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+    }
 
 
 @router.get("/ai/ollama/health")
