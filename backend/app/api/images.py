@@ -80,7 +80,9 @@ def _recent_identity_votes(db: Session, sample_id: str, limit: int = IDENTITY_VO
     votes = []
     for row in rows:
         row_analysis = row.analysis or {}
-        fruit, confidence = _identity(row_analysis)
+        raw = row_analysis.get('raw_frame_identity') or row_analysis.get('identity') or {}
+        fruit = str(raw.get('fruit') or 'Unknown').title()
+        confidence = float(raw.get('confidence') or 0.0)
         screen = float(row_analysis.get('presentation', {}).get('screen_suspicion_pct') or 0.0)
         threshold = max(64.0, _required_identity_confidence(fruit) - 8.0)
         if (
@@ -94,7 +96,6 @@ def _recent_identity_votes(db: Session, sample_id: str, limit: int = IDENTITY_VO
 
 
 def _identity_consensus(candidate: str, confidence: float, history: list[dict], required_frames: int) -> dict:
-    # The current frame is not yet persisted, so prepend it explicitly.
     window = [{'fruit': candidate, 'confidence': confidence}, *history][:IDENTITY_VOTE_WINDOW]
     counts = Counter(item['fruit'] for item in window)
     candidate_count = counts.get(candidate, 0)
@@ -119,12 +120,6 @@ def _identity_consensus(candidate: str, confidence: float, history: list[dict], 
 
 
 def _new_auto_sample(db: Session, previous: FruitSample, candidate: str) -> FruitSample:
-    """Rotate to a clean inspection when a different physical fruit is confirmed.
-
-    Mutating one sample from Banana to Apple mixes frames, validation state and
-    scores from two physical fruits. A stable identity switch therefore creates
-    a fresh sample and makes it the capture target.
-    """
     row = FruitSample(
         sample_id=f'AUT-{secrets.token_hex(3).upper()}',
         fruit_type=candidate,
@@ -230,6 +225,37 @@ def _route_detected_fruit(db: Session, sample: FruitSample, analysis: dict) -> t
     return sample, event
 
 
+def _publish_stable_identity(analysis: dict, sample: FruitSample, auto_event: dict) -> dict:
+    raw_identity = dict(analysis.get('identity') or {})
+    analysis['raw_frame_identity'] = raw_identity
+    stable = sample.fruit_type if sample.fruit_type in SUPPORTED_IDENTITIES else None
+    consensus = auto_event.get('identity_consensus') or {}
+    stable_confidence = consensus.get('average_confidence')
+    if stable and stable_confidence is None:
+        stable_confidence = raw_identity.get('confidence') if raw_identity.get('fruit') == stable else None
+    analysis['identity_state'] = {
+        'stable_fruit': stable,
+        'stable_confidence': stable_confidence,
+        'raw_frame_fruit': raw_identity.get('fruit'),
+        'raw_frame_confidence': raw_identity.get('confidence'),
+        'pending_correction': bool(auto_event.get('pending_correction')),
+        'identity_conflict': bool(auto_event.get('identity_conflict')),
+        'consensus': consensus or None,
+    }
+    if stable:
+        analysis['identity'] = {
+            **raw_identity,
+            'fruit': stable,
+            'confidence': stable_confidence if stable_confidence is not None else raw_identity.get('confidence', 0.0),
+            'method': 'temporal inspection identity',
+            'raw_frame_fruit': raw_identity.get('fruit'),
+            'raw_frame_confidence': raw_identity.get('confidence'),
+            'note': 'Operator-facing identity is stabilized across repeated frames. Raw per-frame classifier output is preserved separately for diagnostics.',
+        }
+        analysis['fruit_type'] = stable
+    return analysis
+
+
 async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str | None, max_bytes: int, db: Session):
     sample = db.query(FruitSample).filter(FruitSample.sample_id == sample_id).first()
     if not sample:
@@ -272,14 +298,7 @@ async def _store(file: UploadFile, sample_id: str, angle: str, ground_truth: str
         path = new_path
         filename = new_filename
 
-    analysis['identity_state'] = {
-        'stable_fruit': sample.fruit_type if sample.fruit_type in SUPPORTED_IDENTITIES else None,
-        'raw_frame_fruit': (analysis.get('identity') or {}).get('fruit'),
-        'raw_frame_confidence': (analysis.get('identity') or {}).get('confidence'),
-        'pending_correction': bool(auto_event.get('pending_correction')),
-        'identity_conflict': bool(auto_event.get('identity_conflict')),
-        'consensus': auto_event.get('identity_consensus'),
-    }
+    analysis = _publish_stable_identity(analysis, sample, auto_event)
 
     record = FruitImage(
         sample_id=sample_id,
