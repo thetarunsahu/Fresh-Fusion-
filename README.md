@@ -1,1113 +1,744 @@
-<div align="center">
-
 # 🍎 FreshFusion
 
 ### Evidence-Grounded Multimodal Fruit Quality Investigation System
 
-**Computer Vision • Environmental Sensing • Gas Response • Multi-View Verification • Evidence Critic • Local AI**
+> **Inspect. Challenge. Verify. Explain.**
 
-FreshFusion is an experimental fruit-quality investigation platform designed to **collect, analyze, challenge, verify, and explain evidence** before releasing a freshness assessment.
+FreshFusion is not just another fruit-classification dashboard.
 
-<br>
+It is a **multimodal fruit quality investigation platform** that combines:
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![React](https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)
-![ESP32](https://img.shields.io/badge/ESP32-IoT-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
-![OpenCV](https://img.shields.io/badge/OpenCV-Vision-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)
-![Ollama](https://img.shields.io/badge/Ollama-Local_AI-000000?style=for-the-badge)
-![Gemma](https://img.shields.io/badge/Gemma-Reasoning_Layer-4285F4?style=for-the-badge)
+- Smartphone vision
+- ESP32 sensor telemetry
+- Multi-view inspection
+- Surface analysis
+- MQ135 relative gas-response tracking
+- Evidence criticism
+- Deterministic fusion
+- Human verification
+- Local AI explanation using Gemma via Ollama
 
-<br>
+The goal is simple:
 
-### Inspect. Challenge. Verify. Explain.
-
-</div>
+> **Do not force a freshness verdict when the evidence is weak.**
 
 ---
 
-# Overview
+## 🌱 Why FreshFusion Exists
 
-Most fruit freshness systems are built around a simple pipeline:
+Most freshness systems rely on a single image, a single sensor, or a black-box prediction.
+
+FreshFusion follows a different philosophy.
 
 ```text
-Image
+INPUT
   ↓
-AI Model
+EVIDENCE
   ↓
-Fresh / Rotten
+INDEPENDENT ANALYSIS
+  ↓
+EVIDENCE CRITIC
+  ↓
+DECISION
+  ↓
+EXPLANATION
+  ↓
+HUMAN VERIFICATION
 ```
 
-FreshFusion takes a different approach.
+Instead of asking:
 
-Instead of asking only:
-
-> **“What class does this image belong to?”**
+> “What class does the AI predict?”
 
 FreshFusion asks:
 
-> **“What evidence do we have, does that evidence agree, is anything missing, and is the result strong enough to trust?”**
-
-Every fruit is treated as an **inspection case**.
-
-An inspection may contain:
-
-- multiple camera viewpoints,
-- temperature measurements,
-- humidity measurements,
-- MQ135 raw gas-response readings,
-- visual surface characteristics,
-- fruit identity evidence,
-- public reference comparisons,
-- physical multi-view verification,
-- freshness hypothesis,
-- evidence contradictions,
-- confidence and fusion results,
-- local AI explanation,
-- and human ground truth.
-
-FreshFusion is intentionally designed to support outcomes such as:
-
-```text
-MORE EVIDENCE REQUIRED
-
-WAITING FOR ESP32
-
-PHYSICAL FRUIT NOT VERIFIED
-
-CONFLICTING EVIDENCE
-
-INCONCLUSIVE
-```
-
-The system does not need to force a freshness answer when evidence is incomplete.
+> “What evidence supports this result, what conflicts with it, and is there enough evidence to trust it?”
 
 ---
 
-# Core Philosophy
+# ⚡ Core Idea
 
-FreshFusion is not designed as:
-
-```text
-Fruit
-  ↓
-Single AI Model
-  ↓
-Prediction
-```
-
-It is designed as:
+FreshFusion investigates fruit quality using multiple evidence sources:
 
 ```text
-Physical Fruit
-      ↓
-Evidence Collection
-      ↓
-Independent Analysis
-      ↓
-Freshness Hypothesis
-      ↓
-Evidence Critic
-      ↓
-Confidence + Fusion
-      ↓
-Conclusive / Inconclusive
-      ↓
-Local AI Explanation
-      ↓
-Human Verification
-```
-
-The core principle is:
-
-> **A trustworthy system should not only produce an answer. It should be able to show what supports that answer, what contradicts it, what is missing, and when it does not know enough.**
-
----
-
-# High-Level System Architecture
-
-```text
-                            ┌────────────────────┐
-                            │   PHYSICAL FRUIT   │
-                            └─────────┬──────────┘
-                                      │
-                 ┌────────────────────┴────────────────────┐
-                 │                                         │
-                 ▼                                         ▼
-        ┌──────────────────┐                     ┌──────────────────┐
-        │   PHONE CAMERA   │                     │      ESP32       │
-        │                  │                     │                  │
-        │ Front            │                     │ DHT11            │
-        │ Left             │                     │ Temperature      │
-        │ Right            │                     │ Humidity         │
-        │ Back             │                     │ MQ135 Raw ADC    │
-        │ Top              │                     │ Device Metadata  │
-        └────────┬─────────┘                     └────────┬─────────┘
-                 │                                        │
-                 └──────────────────┬─────────────────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   FASTAPI BACKEND    │
-                         │                      │
-                         │ Inspection Control   │
-                         │ Evidence Storage     │
-                         │ REST APIs            │
-                         │ WebSocket Updates    │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                  ┌────────────────────────────────┐
-                  │     INVESTIGATION ENGINE       │
-                  └────────────────────────────────┘
-                                    │
-          ┌─────────────────────────┼─────────────────────────┐
-          │                         │                         │
-          ▼                         ▼                         ▼
-
- ┌─────────────────┐      ┌─────────────────┐      ┌───────────────────┐
- │ VISION ANALYST  │      │ SENSOR ANALYST  │      │ REFERENCE ANALYST │
- │                 │      │                 │      │                   │
- │ Fruit presence  │      │ Temperature     │      │ Public datasets   │
- │ Fruit identity  │      │ Humidity        │      │ Similar classes   │
- │ Color           │      │ MQ135 response  │      │ Feature similarity│
- │ Texture         │      │ Sensor freshness│      │ Reference evidence│
- │ Surface damage  │      │ Device source   │      │                   │
- └────────┬────────┘      └────────┬────────┘      └─────────┬─────────┘
-          │                         │                         │
-          └─────────────────────────┼─────────────────────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │ MULTI-VIEW ANALYST   │
-                         │                      │
-                         │ View diversity       │
-                         │ Same-fruit checks    │
-                         │ Screen suspicion     │
-                         │ Physical evidence    │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │ FRESHNESS HYPOTHESIS │
-                         │ ENGINE               │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   EVIDENCE CRITIC    │
-                         │                      │
-                         │ Missing evidence?    │
-                         │ Conflicts?           │
-                         │ Stale sensors?       │
-                         │ Identity mismatch?   │
-                         │ Screen / photo?      │
-                         └──────────┬───────────┘
-                                    │
-                          ┌─────────┴─────────┐
-                          │                   │
-                          ▼                   ▼
-
-                 ┌────────────────┐   ┌────────────────────┐
-                 │ EVIDENCE READY │   │ MORE EVIDENCE      │
-                 │                │   │ REQUIRED            │
-                 └───────┬────────┘   └────────────────────┘
-                         │
-                         ▼
-                ┌──────────────────────┐
-                │ DETERMINISTIC        │
-                │ CONFIDENCE + FUSION  │
-                └──────────┬───────────┘
-                           │
-                           ▼
-                 ┌────────────────────┐
-                 │ EXPERIMENTAL       │
-                 │ FRESHNESS RESULT   │
-                 └─────────┬──────────┘
-                           │
-             ┌─────────────┴─────────────┐
-             │                           │
-             ▼                           ▼
-     ┌─────────────────┐        ┌────────────────────┐
-     │ OLLAMA + GEMMA  │        │ HUMAN VERIFICATION │
-     │                 │        │                    │
-     │ Explanation     │        │ Accept             │
-     │ Contradictions  │        │ Mark Incorrect     │
-     │ Next Step       │        │ Add Ground Truth   │
-     └────────┬────────┘        └──────────┬─────────┘
-              │                           │
-              └──────────────┬────────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │ FRESHFUSION DATA │
-                    │                  │
-                    │ Images           │
-                    │ Sensors          │
-                    │ Predictions      │
-                    │ Ground Truth     │
-                    └────────┬─────────┘
-                             │
-                             ▼
-                    VALIDATION + FUTURE ML
+                    ┌─────────────────────┐
+                    │   Physical Fruit    │
+                    └──────────┬──────────┘
+                               │
+                ┌──────────────┴──────────────┐
+                │                             │
+        Smartphone Camera                 ESP32 Node
+                │                             │
+        Visual Evidence                 Sensor Evidence
+                │                             │
+        ┌───────┴────────┐          ┌─────────┴─────────┐
+        │                │          │                   │
+ Fruit Identity     Surface Analysis   Temperature     Humidity
+        │                │                   │
+        │                │               MQ135 Raw
+        │                │                   │
+        └──────────┬─────┴──────────────┬────┘
+                   │                    │
+                   ▼                    ▼
+             Evidence Analysts
+                   │
+                   ▼
+             Evidence Critic
+                   │
+         ┌─────────┴──────────┐
+         │                    │
+   Evidence sufficient?     Evidence weak?
+         │                    │
+        YES                  NO
+         │                    │
+         ▼                    ▼
+ Deterministic Fusion   Request More Evidence
+         │
+         ▼
+ Freshness Assessment
+         │
+         ▼
+ Gemma Explanation
+         │
+         ▼
+ Human Verification
 ```
 
 ---
 
-# Investigation Modules
+# 🍌 Supported Fruits
 
-FreshFusion uses a **hybrid multi-agent investigation architecture**.
+Current prototype supports:
+
+- Apple
+- Banana
+- Tomato
+
+Fruit identity is initially suggested automatically using visual evidence.
+
+Because single-frame vision can be noisy, FreshFusion also supports **operator confirmation**.
+
+```text
+Camera Suggestion
+      ↓
+Apple / Banana / Tomato
+      ↓
+Operator Confirmation
+      ↓
+Stable Inspection Identity
+```
+
+This prevents one noisy camera frame from contaminating the whole freshness assessment.
+
+---
+
+# 📷 One Camera Is Enough
+
+FreshFusion does **not** require three physical cameras.
+
+A single smartphone camera can identify the fruit.
+
+Additional views are used to improve:
+
+- Surface coverage
+- Damage visibility
+- Physical-fruit verification
+- Confidence in the assessment
+
+Current workflow:
+
+```text
+Front View
+   ↓
+Left View
+   ↓
+Right View
+   ↓
+Multi-view Evidence
+```
+
+The system uses **multiple viewpoints**, not multiple mandatory cameras.
+
+---
+
+# 🧠 Hybrid Investigation Architecture
+
+FreshFusion uses a hybrid architecture.
 
 Not every module is an LLM agent.
 
-Some modules are deterministic, some use computer vision, some use reference evidence, and Gemma is reserved for human-readable reasoning and explanation.
+Some components use computer vision, some use deterministic logic, and some use local AI only for explanation.
 
-| Module | Responsibility | Technology |
-| --- | --- | --- |
-| Intake / Triage | Inspection creation, fruit presence, capture routing | FastAPI + rules |
-| Vision Analyst | Fruit identity, color, texture, defects | OpenCV |
-| Sensor Analyst | Temperature, humidity, MQ135 raw response | Deterministic analysis |
-| Reference Analyst | Compare evidence with public reference data | Feature similarity |
-| Multi-View Analyst | Physical-view consistency and screen/photo checks | OpenCV |
-| Freshness Hypothesis | Build provisional freshness interpretation | Evidence synthesis |
-| Evidence Critic | Detect missing, weak or contradictory evidence | Rule-based critic |
-| Confidence / Fusion | Decide whether assessment can be released | Deterministic engine |
-| Explanation Agent | Generate grounded natural-language explanations | Ollama + Gemma |
-| Human Verification | Accept, reject or label result | Database workflow |
+### Main Investigation Modules
+
+#### 1. Intake / Identity Module
+
+Determines the inspection fruit and keeps the identity stable across the session.
+
+Current modes:
+
+```text
+Auto Identity
+Apple
+Banana
+Tomato
+```
 
 ---
 
-# 1. Intake / Triage
+#### 2. Vision Analyst
 
-The Intake / Triage layer manages the beginning of every FreshFusion inspection.
+Processes smartphone images and extracts:
 
-Responsibilities include:
-
-- creating an inspection,
-- assigning a sample ID,
-- determining whether usable fruit evidence is present,
-- associating camera frames with the active inspection,
-- associating ESP32 telemetry with the active inspection,
-- checking evidence freshness,
-- and preventing stale evidence from silently becoming part of a new assessment.
-
-The inspection itself acts as the central unit around which all evidence is organized.
-
----
-
-# 2. Vision Analyst
-
-The Vision Analyst evaluates visual evidence captured from the fruit.
-
-Current and planned analysis includes:
-
-```text
-Fruit Presence
-Fruit Identity
-Color Distribution
-Brown Surface Percentage
-Dark Surface Percentage
-Healthy Surface Estimate
-Texture Characteristics
-Edge Density
-Surface Irregularity
-Visible Defects
-Reference Features
-Optional ML Prediction
-```
-
-Current visual processing relies primarily on **OpenCV-based analysis**.
-
-The system also contains experimental infrastructure for future transfer-learning models.
-
-A future freshness classifier may use:
-
-```text
-MobileNetV3-Small
-        ↓
-Transfer Learning
-        ↓
-Fresh
-Ripe
-Overripe
-Spoiled
-```
-
-FreshFusion does not claim trained-model accuracy unless a validated model artifact and evaluation actually exist.
+- Fruit presence
+- Fruit identity
+- Surface colour
+- Brown regions
+- Dark regions
+- Texture
+- Edge density
+- Roughness
+- Surface damage estimate
+- Healthy surface estimate
+- Frame quality
 
 ---
 
-# 3. Sensor Analyst
+#### 3. Sensor Analyst
 
-The Sensor Analyst evaluates environmental and gas-related evidence from the ESP32.
+Processes physical ESP32 telemetry.
 
-Current signals include:
+Current sensors:
 
 ```text
-Temperature
-Humidity
-MQ135 Raw ADC Response
-RSSI
-Device Uptime
-Timestamp
-Device Identity
-Evidence Source
+DHT11
+├── Temperature
+└── Humidity
+
+MQ135
+└── Raw / Relative Gas Response
 ```
 
-The Sensor Analyst also checks whether:
+Important:
 
-- the packet is complete,
-- the reading is recent,
-- the source is hardware or simulator,
-- values are within expected electrical/input ranges,
-- and the evidence is eligible for fusion.
+> MQ135 raw ADC values are **not treated as calibrated ethylene ppm values**.
+
+FreshFusion uses them as relative evidence only.
 
 ---
 
-# MQ135 Scientific Boundary
+# 🧪 MQ135 Baseline Logic
 
-FreshFusion stores and analyzes `mq135_raw`.
+A raw MQ135 number alone has very little meaning.
 
-This value represents the electrical ADC response from the MQ135 sensor.
-
-It is currently treated as:
-
-> **Relative experimental gas-response evidence**
-
-It is not automatically treated as:
+FreshFusion first establishes a local **empty-chamber baseline**.
 
 ```text
-ppm
-ethylene concentration
-VOC concentration
-spoilage concentration
-food safety measurement
+Empty Chamber
+     ↓
+Record Multiple MQ135 Readings
+     ↓
+Baseline Mean
+     ↓
+Insert Fruit
+     ↓
+Current MQ135 Reading
+     ↓
+Gas Delta
 ```
-
-unless a proper calibration experiment has been performed.
-
-Current gas contribution is therefore explicitly experimental.
-
----
-
-# 4. Reference Analyst
-
-FreshFusion can compare fruit characteristics with a locally indexed public dataset.
-
-The Reference Analyst may provide:
-
-```text
-Reference Dataset
-Closest Class
-Similarity
-Reference Count
-Feature Distance
-Source Information
-```
-
-Reference similarity is supporting evidence.
-
-It is **not equivalent to**:
-
-- model probability,
-- validation accuracy,
-- freshness confidence,
-- or ground truth.
-
-Public dataset labels are also kept separate from FreshFusion human ground-truth labels.
-
----
-
-# 5. Multi-View Analyst
-
-FreshFusion should not unlock a freshness result simply because one image appears to contain a fruit.
-
-The system therefore collects multiple viewpoints such as:
-
-```text
-Front
-Left
-Right
-Back
-Top
-```
-
-The Multi-View Analyst examines signals including:
-
-- number of distinct views,
-- appearance diversity,
-- fruit fingerprint differences,
-- fruit identity consistency,
-- planar homography consistency,
-- screen/display suspicion,
-- repeated flat-image suspicion,
-- and physical-fruit likelihood.
 
 Example:
 
 ```text
-Front captured     ✓
-Left captured      ✓
-Back captured      ✓
-
-Identity stable    ✓
-Appearance changed ✓
-Screen suspicion   Low
-
-Physical fruit likely
+Empty Chamber Baseline : 1650 ADC
+Fruit Reading          : 1872 ADC
+Gas Delta              : +222 ADC
 ```
 
-This verification is probabilistic.
-
-A monocular phone camera cannot provide the same guarantees as dedicated depth, stereo, NIR, or structured-light hardware.
+The system therefore compares the fruit against the same chamber environment instead of assuming a universal gas value.
 
 ---
 
-# 6. Freshness Hypothesis Engine
+# 🔍 Image Quality Gate
 
-The Freshness Hypothesis Engine combines findings from multiple analysts into a provisional interpretation.
+FreshFusion does not blindly trust every camera frame.
+
+Before using visual evidence, it checks:
+
+- Fruit presence
+- Centering
+- Blur
+- Lighting
+- Surface visibility
+- Multiple fruit-like regions
+- Screen/photo suspicion
+- View diversity
+
+If visual evidence is poor:
+
+```text
+Result = HOLD
+```
+
+instead of forcing a freshness prediction.
+
+---
+
+# 🛡 Evidence Critic
+
+This is one of the most important components of FreshFusion.
+
+The Evidence Critic checks whether different evidence sources agree.
 
 Example:
 
 ```text
-VISION
-Surface browning increased
-Healthy surface reduced
-Texture degradation detected
+Vision Analyst     → Overripe
+Sensor Analyst     → Elevated gas response
+Reference Analyst  → Ripe / Overripe
+Multi-view Check   → Valid
 
-SENSOR
-Temperature acceptable
-Humidity moderately high
-MQ135 relative response elevated
-
-REFERENCE
-Closest visual class resembles overripe reference
-
-MULTI-VIEW
-Physical fruit likely
-
-────────────────────────────────────
-
-PROVISIONAL HYPOTHESIS
-
-Likely Overripe
+Agreement          → Strong
 ```
 
-This is not yet the final result.
-
-The hypothesis must first pass through the Evidence Critic.
-
----
-
-# 7. Evidence Critic
-
-The Evidence Critic is one of the core differentiators of FreshFusion.
-
-Instead of trusting the first prediction, FreshFusion actively challenges its own evidence.
-
-The critic checks questions such as:
+But if the evidence conflicts:
 
 ```text
-Is a fruit actually visible?
-
-Are enough viewpoints available?
-
-Do the views appear to belong to the same fruit?
-
-Is ESP32 telemetry recent?
-
-Is the sensor packet complete?
-
-Is the sensor source real hardware or simulator?
-
-Does fruit identity match the active inspection?
-
-Is a laptop screen or phone display suspected?
-
-Does the evidence appear planar?
-
-Is reference data available?
-
-Do visual and sensor findings disagree?
-
-Is any required evidence stale?
-
-Is the final assessment sufficiently supported?
+Vision Analyst     → Fresh
+Sensor Analyst     → Strong change
+Reference Analyst  → Overripe
+Multi-view Check   → Weak
 ```
 
-Possible critic states include:
+FreshFusion can return:
 
 ```text
-PASSED
-
-WARNING
-
-NEEDS MORE DATA
-
-BLOCKED
-```
-
-Possible decision states include:
-
-```text
-CONCLUSIVE
-
 MORE EVIDENCE REQUIRED
-
-WAITING FOR ESP32
-
-PHYSICAL FRUIT NOT VERIFIED
-
-CONFLICTING EVIDENCE
-
-INCONCLUSIVE
 ```
+
+instead of producing a misleading final answer.
 
 ---
 
-# Evidence Agreement
+# 📊 Provisional vs Final Score
 
-FreshFusion is designed to expose agreement and disagreement between evidence sources.
+FreshFusion separates live estimation from verified output.
+
+### Provisional Quality Score
+
+Shown while evidence is still being collected.
 
 Example:
 
 ```text
-VISION ANALYST
-Likely Overripe
-
-SENSOR ANALYST
-Moderate deterioration signal
-
-REFERENCE ANALYST
-Closest class: Normal / Ripe
-
-MULTI-VIEW ANALYST
-Physical fruit likely
-
-──────────────────────────────
-
-EVIDENCE AGREEMENT
-
-3 / 4 signals broadly aligned
-
-CONFLICT
-
-Reference evidence is less degraded than visual evidence.
-
-ACTION
-
-Confidence reduced.
-Additional rear view recommended.
+62 / 100
 ```
 
-The objective is not to hide everything behind a single number.
+This helps the operator understand the current trend.
 
-The system should show **why** confidence rises or falls.
+### Final Freshness Score
+
+Released only when required evidence checks pass.
+
+The system clearly distinguishes:
+
+```text
+LIVE ESTIMATE
+vs
+VERIFIED RESULT
+```
 
 ---
 
-# 8. Deterministic Confidence + Fusion
+# ⚙️ Deterministic Fusion
 
-Only evidence that passes the required gates becomes eligible for final fusion.
+FreshFusion does not allow the LLM to decide freshness.
 
-The fusion system may combine:
+Current prototype fusion combines sensor and vision evidence using deterministic logic.
 
-```text
-Vision Evidence
-Sensor Evidence
-Physical Verification
-View Coverage
-Evidence Freshness
-Critic State
-Reference Support
-```
-
-Current fusion weights and thresholds are experimental.
-
-They must be calibrated using real FreshFusion ground truth before being presented as scientifically validated.
-
-FreshFusion therefore distinguishes between:
+Example experimental weighting:
 
 ```text
-Experimental Confidence
-
-and
-
-Validated Accuracy
+Sensor Score × 0.48
++
+Vision Score × 0.52
 ```
 
-These are not the same thing.
+These weights are currently experimental and are not claimed as scientifically validated constants.
 
 ---
 
-# 9. Local AI with Ollama + Gemma
+# 🤖 FreshFusion Assistant
 
-FreshFusion runs Gemma locally through Ollama.
+FreshFusion includes a proactive assistant inside the inspection workspace.
 
-```text
-FreshFusion Evidence
-        ↓
-      Ollama
-        ↓
-      Gemma
-        ↓
-Structured Explanation
-```
+The assistant does not wait only for questions.
 
-Gemma's role is to:
+It continuously interprets the current evidence.
 
-- summarize evidence,
-- explain the assessment,
-- describe supporting evidence,
-- identify contradictions,
-- identify missing evidence,
-- recommend the next inspection step,
-- and generate human-readable reports.
-
-Example output:
-
-```json
-{
-  "summary": "Visual evidence suggests advanced ripening.",
-  "supporting_evidence": [
-    "Brown surface percentage increased",
-    "Healthy surface estimate decreased"
-  ],
-  "contradictions": [
-    "Reference evidence appears less degraded"
-  ],
-  "missing_evidence": [
-    "Rear viewpoint"
-  ],
-  "recommended_next_step": "Capture the rear view of the fruit."
-}
-```
-
-Gemma does **not** control the core numerical verdict.
-
-It cannot be used to invent:
+Example:
 
 ```text
-Sensor values
-Freshness scores
-ppm values
-Accuracy
-Validation metrics
-Food-safety claims
+What changed?
+Gas response increased compared with recent readings.
+
+What does it mean?
+The fruit-chamber gas signal is changing relative to the local baseline.
+
+What should you do?
+Continue the inspection and compare the sensor trend with the visual condition.
 ```
 
-If Ollama is unavailable, the deterministic FreshFusion inspection pipeline should continue to operate.
+The assistant can also answer questions such as:
+
+```text
+Why is the score low?
+
+What should I do with this fruit?
+
+Explain the MQ135 reading.
+
+Which evidence is missing?
+
+Why has FreshFusion not released the final result?
+```
 
 ---
 
-# 10. Human-in-the-Loop Verification
+# 🧠 Gemma + Ollama
 
-FreshFusion does not treat its own prediction as ground truth.
+FreshFusion uses a local Gemma model through Ollama as an **explanation layer**.
 
-After an assessment, a reviewer can:
+Gemma does not control the final freshness verdict.
+
+```text
+Deterministic Decision
+        ↓
+Gemma
+        ↓
+Human-readable Explanation
+```
+
+If Ollama is unavailable, FreshFusion falls back to a deterministic evidence-based assistant.
+
+Core freshness logic therefore continues working even without the LLM.
+
+---
+
+# 👤 Human-in-the-Loop Verification
+
+FreshFusion keeps humans inside the validation cycle.
+
+Supported actions include:
 
 ```text
 Accept System Assessment
 
-Mark Assessment Incorrect
+Mark as Incorrect
 
 Add Ground Truth
+
+Manual Override
 ```
 
-Ground-truth categories are:
+Human feedback is stored along with the evidence snapshot.
 
-```text
-Fresh
-Ripe
-Overripe
-Spoiled
-```
-
-Human verification is stored separately from:
-
-- public dataset labels,
-- reference classifications,
-- model predictions,
-- heuristic results,
-- and fusion outputs.
-
-This creates an auditable feedback loop.
-
-```text
-Inspection
-    ↓
-System Assessment
-    ↓
-Human Observation
-    ↓
-Ground Truth
-    ↓
-Validation Dataset
-    ↓
-Model Improvement
-```
+This allows future validation and dataset improvement.
 
 ---
 
-# Database Architecture
+# 🧬 Ground Truth & Dataset Development
 
-FreshFusion currently uses **SQLAlchemy**.
+FreshFusion is designed to grow its own labelled dataset.
 
-SQLite is used for local prototype development.
+Each physical fruit can be assigned a specimen ID.
 
-The architecture can support another relational database through `DATABASE_URL`.
-
-Current important entities include:
+Example:
 
 ```text
-FruitSample
-│
-├── SensorReading[]
-├── FruitImage[]
-├── FusionResult[]
-└── HumanVerification[]
-
-InspectionControl
+APPLE-01
+BANANA-04
+TOMATO-02
 ```
 
-Conceptually, the long-term database architecture is:
+Multiple views and repeated inspections of the same fruit remain linked together.
 
-```text
-Inspection
-│
-├── Device Session
-│   ├── Phone
-│   └── ESP32
-│
-├── Sensor Readings
-│
-├── Images
-│   ├── Front
-│   ├── Left
-│   ├── Right
-│   ├── Back
-│   └── Top
-│
-├── Evidence Events
-│
-├── Investigation Runs
-│   ├── Vision Analyst Output
-│   ├── Sensor Analyst Output
-│   ├── Reference Analyst Output
-│   ├── Multi-View Output
-│   ├── Critic Output
-│   └── Confidence / Fusion
-│
-├── Model Version
-│
-├── LLM Explanation
-│
-├── Human Verification
-│   └── Ground Truth
-│
-└── Validation Record
-```
-
-Future database engineering work includes:
-
-```text
-Formal Migrations
-Investigation Snapshots
-Evidence Event Persistence
-Model Version Tracking
-Device Session Tracking
-Validation Runs
-Export / Backup
-Dataset Versioning
-```
+This helps prevent dataset leakage.
 
 ---
 
-# Frontend Workspace
+# 📈 Validation Engine
 
-The FreshFusion interface is organized into six primary areas.
+FreshFusion can calculate real validation metrics once enough ground-truth data exists.
 
-```text
-Overview
-   ↓
-Live Inspection
-   ↓
-Investigation
-   ↓
-Evidence
-   ↓
-Dataset & Validation
-   ↓
-History
-```
-
-## Overview
-
-Provides:
-
-- system architecture,
-- hardware status,
-- supported fruit information,
-- investigation workflow,
-- and current system availability.
-
-## Live Inspection
-
-Provides:
-
-- active inspection,
-- camera feed,
-- QR phone pairing,
-- multi-view capture,
-- sensor readings,
-- current evidence,
-- physical verification,
-- and live status.
-
-## Investigation
-
-The main intelligence workspace.
-
-Displays:
+Supported metrics include:
 
 ```text
-Vision Analyst
-Sensor Analyst
-Reference Analyst
-Multi-View Analyst
-Freshness Hypothesis
-Evidence Critic
-Decision State
-Gemma Explanation
-Human Verification
+Accuracy
+Precision
+Recall
+F1 Score
+Confusion Matrix
+Per-Class Performance
+Fruit-wise Performance
 ```
 
-## Evidence
+If enough validation data does not exist, the system does **not** display fake accuracy.
 
-Displays the chronological inspection record.
-
-Possible evidence events include:
-
-```text
-Inspection created
-Fruit detected
-Image accepted
-Image rejected
-Sensor reading received
-Reference match produced
-Physical verification updated
-Critic state changed
-Fusion recomputed
-Human verification added
-```
-
-## Dataset & Validation
-
-Responsible for:
-
-- public dataset metadata,
-- source licenses,
-- class counts,
-- FreshFusion-collected samples,
-- human labels,
-- train/validation/test manifests,
-- validation runs,
-- confusion matrix,
-- precision,
-- recall,
-- F1 score,
-- and per-fruit performance.
-
-No validation percentage should be displayed unless it comes from a real evaluation.
-
-Until then:
+Instead it reports:
 
 ```text
 NOT YET VALIDATED
 ```
 
-## History
+or
 
-Allows previous inspections to be reviewed without silently changing the active hardware capture target.
+```text
+PRELIMINARY
+```
 
 ---
 
-# Current Hardware Prototype
+# 🖥 Live Inspection Workspace
+
+The FreshFusion interface is designed around decisions first and raw engineering evidence second.
+
+Main inspection view includes:
 
 ```text
-                ┌─────────────┐
-                │    ESP32    │
-                └──────┬──────┘
-                       │
-         ┌─────────────┴─────────────┐
-         │                           │
-         ▼                           ▼
-   ┌───────────┐               ┌───────────┐
-   │   DHT11   │               │   MQ135   │
-   │           │               │           │
-   │ Temp      │               │ Raw ADC   │
-   │ Humidity  │               │ Response  │
-   └───────────┘               └───────────┘
-
-
-                 PHONE CAMERA
-                      │
-       ┌──────────────┼──────────────┐
-       │              │              │
-     Front          Left           Right
-       │              │              │
-       └──────────────┼──────────────┘
-                      │
-                    Back
-                      │
-                     Top
+Fruit Identity
+Current Condition
+Recommended Action
+Risk
+Quality Score
+Temperature
+Humidity
+MQ135 Raw
+Gas Delta
+Surface Damage
+Evidence Status
+ESP32 Status
+Camera Views
+FreshFusion Assistant
 ```
 
-Current hardware includes:
-
-| Component | Responsibility |
-| --- | --- |
-| ESP32 | Sensor acquisition and backend communication |
-| DHT11 | Temperature and humidity |
-| MQ135 | Raw relative gas-response signal |
-| Phone Camera | Multi-view visual evidence |
-| Laptop | Backend, database, computer vision, frontend and local AI |
+Detailed analysis remains available for engineering review.
 
 ---
 
-# Realtime Communication
+# 📊 Detailed Analysis
 
-FreshFusion uses:
+The detailed inspection panel includes:
+
+### Sensor Trend
+
+Live plots for:
+
+- Temperature
+- Humidity
+- MQ135 raw response
+
+### Image Analysis
+
+- Original frame
+- Defect overlay
+- Texture map
+- Fruit mask
+- Edge map
+
+### Surface Profile
+
+Fruit-dependent colour analysis.
+
+### Texture Analysis
+
+- Entropy
+- Roughness
+- Edge density
+- Laplacian variance
+- Healthy surface estimate
+
+### Observations
+
+Automatically highlights visual regions requiring attention.
+
+---
+
+# 🌐 Backend Architecture
+
+FreshFusion uses FastAPI.
+
+Main API families:
 
 ```text
-Phone Camera
-      ↓
-HTTP Image Upload
-      ↓
-FastAPI
-      ↓
-Database + Analysis
-      ↓
-WebSocket
-      ↓
-React Dashboard
+/api/v1/samples
+/api/v1/sensors
+/api/v1/images
+/api/v1/datasets
+/api/v1/investigation
+/api/v1/auth
 ```
 
-ESP32 communication:
+Realtime updates are delivered using WebSockets.
+
+---
+
+# 🗄 Database
+
+FreshFusion uses SQLAlchemy-based persistent storage.
+
+Stored information includes:
+
+```text
+Fruit Samples
+Sensor Readings
+Fruit Images
+Fusion Results
+Inspection Profiles
+Human Verification
+Investigation Snapshots
+Inspection Events
+```
+
+Conceptually:
+
+```text
+Inspection
+│
+├── Fruit Identity
+├── Sensor Readings
+├── Images
+│   ├── Front
+│   ├── Left
+│   └── Right
+├── Evidence Events
+├── Investigation Results
+├── Fusion Output
+├── AI Explanation
+└── Human Verification
+```
+
+---
+
+# 📡 Hardware Architecture
+
+Current prototype:
 
 ```text
 ESP32
-  ↓
-Wi-Fi
-  ↓
-HTTP Sensor Packet
-  ↓
-FastAPI
-  ↓
-Validation
-  ↓
-Database
-  ↓
-Fusion / Investigation
-  ↓
-Realtime UI Update
+├── DHT11
+│   ├── Temperature
+│   └── Humidity
+│
+├── MQ135
+│   └── Relative gas response
+│
+└── Wi-Fi
+    ↓
+FastAPI Backend
+```
+
+Camera:
+
+```text
+Smartphone Rear Camera
+        ↓
+Trusted HTTPS Connection
+        ↓
+FreshFusion Backend
 ```
 
 ---
 
-# Project Structure
+# 🔐 Camera Security
+
+Modern mobile browsers block camera access on untrusted HTTP pages.
+
+FreshFusion therefore provides a trusted HTTPS phone-camera link during startup.
+
+The launcher creates the connection automatically.
+
+```powershell
+.\start_freshfusion.ps1
+```
+
+The generated phone link can then be opened through the QR code shown in the dashboard.
+
+---
+
+# 🧩 Technology Stack
+
+### Backend
 
 ```text
-Fresh-Fusion-/
-│
-├── README.md
-├── start_freshfusion.ps1
-├── setup_ollama.ps1
-├── setup_reference_data.ps1
+Python
+FastAPI
+SQLAlchemy
+OpenCV
+WebSockets
+Ollama
+Gemma
+```
+
+### Frontend
+
+```text
+React
+Vite
+Recharts
+Lucide
+QRCode
+```
+
+### Hardware
+
+```text
+ESP32
+DHT11
+MQ135
+Smartphone Camera
+```
+
+---
+
+# 📁 Project Structure
+
+```text
+FreshFusion/
 │
 ├── backend/
 │   ├── app/
-│   │   ├── api/
-│   │   ├── services/
-│   │   │   ├── investigation_core/
-│   │   │   ├── image_analysis.py
-│   │   │   ├── physical_validation.py
-│   │   │   ├── sensor_assessment.py
-│   │   │   ├── reference_match.py
-│   │   │   ├── fusion.py
-│   │   │   └── ollama_client.py
-│   │   ├── database.py
-│   │   ├── models.py
-│   │   ├── schemas.py
-│   │   └── main.py
-│   │
-│   ├── tests/
-│   └── requirements.txt
+│   ├── services/
+│   ├── api/
+│   └── tests/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── features/
-│   │   │   ├── overview/
-│   │   │   ├── inspection/
-│   │   │   ├── investigation/
-│   │   │   ├── evidence/
-│   │   │   ├── validation/
-│   │   │   └── history/
-│   │   │
-│   │   ├── hooks/
-│   │   ├── layout/
-│   │   ├── shared/
-│   │   ├── components/
-│   │   ├── api.js
-│   │   ├── App.jsx
-│   │   └── phone.jsx
-│   │
-│   ├── tests/
-│   └── package.json
+│   ├── features/
+│   ├── components/
+│   └── tests/
 │
 ├── esp32/
-│   └── freshfusion_node.ino
 │
 ├── ai/
-│   ├── train.py
-│   ├── export_dataset.py
-│   ├── sync_public_reference.py
-│   └── requirements.txt
 │
-└── docs/
-    │
-    ├── INVESTIGATION_FOUNDATION.md
-    ├── IMPLEMENTATION_REPORT.md
-    ├── LOCAL_NETWORK.md
-    ├── PHYSICAL_VALIDATION.md
-    │
-    └── architecture/
-        ├── README.md
-        ├── BACKEND.md
-        ├── FRONTEND.md
-        ├── DATABASE.md
-        ├── AI.md
-        ├── HARDWARE.md
-        ├── UI.md
-        ├── TESTING.md
-        ├── TEAM_WORKFLOW.md
-        └── MASTER_CHECKLIST.md
+├── models/
+│
+├── uploads/
+│
+├── docs/
+│
+└── start_freshfusion.ps1
 ```
 
 ---
 
-# Quick Start
+# 🚀 Quick Start
 
-Clone the repository:
-
-```bash
-git clone https://github.com/thetarunsahu/Fresh-Fusion-.git
-cd Fresh-Fusion-
-```
-
-On Windows PowerShell:
+### 1. Start FreshFusion
 
 ```powershell
+cd FreshFusion
 Set-ExecutionPolicy -Scope Process Bypass
 .\start_freshfusion.ps1
 ```
@@ -1115,402 +746,154 @@ Set-ExecutionPolicy -Scope Process Bypass
 The launcher starts:
 
 ```text
-React / Vite Dashboard
 FastAPI Backend
-Phone Camera HTTPS Tunnel
-FreshFusion Runtime Services
+React Frontend
+Phone HTTPS Tunnel
 ```
 
 ---
 
-# Ollama + Gemma Setup
-
-FreshFusion uses Ollama for local Gemma inference.
-
-Run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\setup_ollama.ps1
-```
-
-Default configuration:
+### 2. Start an Inspection
 
 ```text
-Ollama URL
-http://127.0.0.1:11434
-
-Model
-gemma3:4b
-```
-
-Health endpoint:
-
-```text
-GET /api/v1/ai/ollama/health
-```
-
-Investigation explanation endpoint:
-
-```text
-POST /api/v1/samples/{sample_id}/investigation/explain
+Open Dashboard
+      ↓
+New Inspection
+      ↓
+Auto Identity
+      ↓
+Show Fruit
+      ↓
+Confirm Identity if Needed
+      ↓
+Capture Views
+      ↓
+Collect ESP32 Evidence
 ```
 
 ---
 
-# Backend Development
+### 3. MQ135 Baseline
 
-Create the environment:
-
-```powershell
-python -m venv backend/.venv
-```
-
-Install dependencies:
-
-```powershell
-.\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
-```
-
-Run FastAPI:
-
-```powershell
-.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload
-```
-
-Default API:
+Before inserting the fruit:
 
 ```text
-http://localhost:8000
+Empty Chamber
+      ↓
+Record baseline readings
+      ↓
+Insert fruit
+      ↓
+Compare relative gas response
 ```
 
 ---
 
-# Frontend Development
+# 🧪 Scientific Guardrails
 
-```bash
-cd frontend
-npm install
-npm run dev
+FreshFusion intentionally avoids unsupported claims.
+
+We do not claim:
+
+```text
+MQ135 raw ADC = exact ethylene ppm
 ```
 
-Production build:
+We do not claim:
 
-```bash
-npm run build
+```text
+Reference similarity = model accuracy
+```
+
+We do not claim:
+
+```text
+Fusion confidence = validated accuracy
+```
+
+We do not claim:
+
+```text
+RGB camera can reliably measure internal fruit quality
+```
+
+We do not claim:
+
+```text
+Usable life without labelled time-series calibration
+```
+
+Instead, FreshFusion clearly separates:
+
+```text
+Observed Evidence
+↓
+Experimental Assessment
+↓
+Validated Claims
 ```
 
 ---
 
-# Testing
+# 🎯 What Makes FreshFusion Different
 
-Backend tests:
+FreshFusion is not built around one prediction.
 
-```powershell
-.\backend\.venv\Scripts\python.exe -B -m unittest discover -s backend/tests -v
-```
-
-Frontend build:
-
-```bash
-cd frontend
-npm run build
-```
-
-Browser tests:
-
-```bash
-npx playwright install chromium
-npm test
-```
-
-Automated tests do not replace:
+It is built around **evidence agreement**.
 
 ```text
-Real Fruit Testing
-Phone Permission Testing
-ESP32 Testing
-Sensor Calibration
-Physical Multi-View Testing
-Ollama Integration Testing
-Real Network Testing
+Traditional System
+Image
+  ↓
+Classifier
+  ↓
+Result
+```
+
+FreshFusion:
+
+```text
+Camera + Sensors + Multi-view + Reference
+                 ↓
+          Independent Analysis
+                 ↓
+           Evidence Critic
+                 ↓
+       Deterministic Verification
+                 ↓
+             Decision
+                 ↓
+          Local AI Explanation
+                 ↓
+         Human Confirmation
 ```
 
 ---
 
-# Evidence Lifecycle
+# 🏆 SIH Vision
 
-```text
-DATA ACQUISITION
-       ↓
-DATA VALIDATION
-       ↓
-DATA STORAGE
-       ↓
-EVIDENCE PROCESSING
-       ↓
-ANALYST OUTPUTS
-       ↓
-FRESHNESS HYPOTHESIS
-       ↓
-EVIDENCE CRITIC
-       ↓
-CONFIDENCE / FUSION
-       ↓
-FINAL OR INCONCLUSIVE RESULT
-       ↓
-GEMMA EXPLANATION
-       ↓
-HUMAN VALIDATION
-       ↓
-GROUND TRUTH
-       ↓
-VALIDATION DATASET
-       ↓
-FUTURE MODEL IMPROVEMENT
-```
+FreshFusion aims to evolve from a prototype into an affordable fruit-quality decision-support system for:
+
+- Warehouses
+- Retail procurement centres
+- Fruit distributors
+- Cold-chain operators
+- Storage facilities
+- Farmers and FPOs
+- Post-harvest quality teams
+
+The long-term goal is not simply:
+
+> “Detect whether a fruit is fresh.”
+
+The goal is:
+
+> **Build a system that can explain why it believes a fruit is fresh, identify when the evidence is weak, and continuously improve from real-world verification.**
 
 ---
 
-# Engineering Priorities
+## FreshFusion
 
-```text
-1. Reliable Evidence Acquisition
-          ↓
-2. Stable Database Architecture
-          ↓
-3. Explicit Inspection / Device Pairing
-          ↓
-4. Vision Intelligence
-          ↓
-5. Sensor Intelligence
-          ↓
-6. Reference Analysis
-          ↓
-7. Multi-View Verification
-          ↓
-8. Investigation Analysts
-          ↓
-9. Freshness Hypothesis
-          ↓
-10. Evidence Critic
-          ↓
-11. Confidence / Fusion
-          ↓
-12. Ollama + Gemma Explanation
-          ↓
-13. Human Ground Truth
-          ↓
-14. Dataset Validation
-          ↓
-15. UI / UX Refinement
-          ↓
-16. Demo Reliability
-```
+### Decision first. Evidence behind it.
 
----
-
-# Scientific Guardrails
-
-FreshFusion is an experimental engineering prototype.
-
-The project intentionally avoids unsupported claims.
-
-## MQ135
-
-Raw MQ135 values are treated as relative electrical measurements.
-
-Do not claim calibrated ppm without proper calibration.
-
-## Reference Similarity
-
-Reference similarity is not model accuracy.
-
-## Model Accuracy
-
-Do not claim trained-model accuracy unless:
-
-```text
-Model artifact exists
-        +
-Independent test set exists
-        +
-Evaluation has been completed
-```
-
-## Physical Verification
-
-Phone-based physical verification is probabilistic.
-
-It is not guaranteed liveness detection.
-
-## Freshness Score
-
-Fusion weights and thresholds remain experimental until calibrated.
-
-## Food Safety
-
-FreshFusion is not a food-safety certification system.
-
----
-
-# Documentation
-
-Detailed engineering documentation is available under:
-
-```text
-docs/architecture/
-```
-
-Recommended reading order:
-
-```text
-README.md
-    ↓
-MASTER_CHECKLIST.md
-    ↓
-BACKEND.md
-    ↓
-FRONTEND.md
-    ↓
-DATABASE.md
-    ↓
-AI.md
-    ↓
-HARDWARE.md
-    ↓
-UI.md
-    ↓
-TESTING.md
-    ↓
-TEAM_WORKFLOW.md
-```
-
-Additional technical documentation:
-
-```text
-docs/INVESTIGATION_FOUNDATION.md
-docs/IMPLEMENTATION_REPORT.md
-docs/LOCAL_NETWORK.md
-docs/PHYSICAL_VALIDATION.md
-```
-
----
-
-# Current Development Status
-
-FreshFusion currently includes working foundations for:
-
-- FastAPI backend
-- React/Vite frontend
-- ESP32 telemetry ingestion
-- phone-camera capture
-- sample-based inspection workflow
-- OpenCV fruit analysis
-- Apple/Banana identity support
-- reference dataset indexing
-- reference similarity analysis
-- sensor evidence processing
-- MQ135 relative response handling
-- multi-view physical verification
-- evidence critic
-- deterministic decision logic
-- human verification
-- evidence timeline
-- inspection history
-- dataset/validation workspace
-- WebSocket updates
-- Ollama/Gemma integration foundation
-- automated backend tests
-- browser regression tests
-
-Still requiring substantial work:
-
-- real sensor calibration
-- reliable device-session binding
-- formal database migrations
-- persistent investigation snapshots
-- validation-run storage
-- model-version tracking
-- real ground-truth collection
-- sample-level dataset splitting
-- trained freshness model validation
-- final UI redesign
-- full real-hardware testing
-- demo recovery workflow
-- report generation
-- security hardening
-
----
-
-# What Makes FreshFusion Different?
-
-FreshFusion is not built around the question:
-
-> **“Can AI classify this fruit?”**
-
-It is built around:
-
-> **“Can the available evidence justify this assessment?”**
-
-That difference changes the entire system.
-
-FreshFusion is designed to:
-
-- combine multiple sensing modalities,
-- inspect visual and environmental evidence independently,
-- verify physical multi-view consistency,
-- challenge its own hypothesis,
-- detect missing evidence,
-- detect contradictions,
-- reject stale or simulated evidence,
-- separate prediction from ground truth,
-- explain assessments locally,
-- preserve an auditable inspection history,
-- and improve through human-labelled validation.
-
----
-
-# Vision
-
-The long-term goal of FreshFusion is to evolve from a prototype freshness detector into a reliable fruit-quality investigation platform capable of supporting:
-
-```text
-Warehouses
-Retail Procurement
-Cold Storage
-Fruit Sorting
-Quality Inspection
-Post-Harvest Monitoring
-Research Experiments
-Supply Chain Quality Control
-```
-
-Future research directions may include:
-
-```text
-MobileNetV3 Freshness Classification
-DINOv2 / CLIP Embeddings
-FAISS Reference Retrieval
-Model Registry
-Dataset Versioning
-Calibration Experiments
-Depth / Stereo Vision
-Better Gas Sensors
-Controlled Multi-View Capture
-Edge Deployment
-Multi-Fruit Expansion
-Longitudinal Freshness Tracking
-```
-
----
-
-<div align="center">
-
-# FreshFusion
-
-### Inspect. Challenge. Verify. Explain.
-
-**An evidence-grounded multimodal fruit-quality investigation platform built for traceable decisions, not just predictions.**
-
-</div>
+**Team OrchardX**
